@@ -12,7 +12,7 @@ datt <- read.table("BRCA_t_geneENS_tpm.txt",header=TRUE,sep="\t")
 #datt <- read.table("THYM_t_geneENS_tpm.txt",header=TRUE,sep="\t")
 
 setwd("~/Documents/Howest/Stage/CMGG/RNA-seq_CNV/BRCA/Gene-tabellen")
-#setwd("~/Documents/Howest/Stage/CMGG/RNA-seq_CNV/THYM/Gene-tabellen")
+#dir <- "~/Documents/Howest/Stage/CMGG/RNA-seq_CNV/BRCA/Expressietabellen"
 
 file_list = list.files(pattern="*.csv")
 data_list <- vector("list", "length" = length(file_list))  
@@ -41,7 +41,6 @@ for(i in seq_along(file_list)){
     genesn <- genesn[c("Chromosoom", "Start", "Stop","GeneId", "Expression")]
     
     setwd("~/Documents/Howest/Stage/CMGG/RNA-seq_CNV/BRCA/Expressietabellen")
-    #setwd("~/Documents/Howest/Stage/CMGG/RNA-seq_CNV/THYM/Expressietabellen")
     #write.table(genesn, file=paste(code, "_normal.csv", sep=""),sep = "\t", col.names  = TRUE, row.names = FALSE)
     
   }, error=function(e){cat("ERROR :",code,"not in normal data.\n")})
@@ -60,13 +59,11 @@ for(i in seq_along(file_list)){
     genest <- genest[c("Chromosoom", "Start", "Stop","GeneId", "Expression")]
     
     setwd("~/Documents/Howest/Stage/CMGG/RNA-seq_CNV/BRCA/Expressietabellen")
-    #setwd("~/Documents/Howest/Stage/CMGG/RNA-seq_CNV/THYM/Expressietabellen")
     #write.table(genest, file=paste(code, "_tumor.csv", sep=""),sep = "\t", col.names  = TRUE, row.names = FALSE)
     
   }, error=function(e){cat("ERROR : ",code,"  not in tumor data.\n")})
 
   setwd("~/Documents/Howest/Stage/CMGG/RNA-seq_CNV/BRCA/Gene-tabellen")
-  #setwd("~/Documents/Howest/Stage/CMGG/RNA-seq_CNV/THYM/Gene-tabellen")
   
   start = genesn[,c('Chromosoom', 'Start',  'GeneId','Expression')]
   stop = genesn[,c('Chromosoom', 'Stop', 'GeneId', 'Expression')]
