@@ -5,8 +5,6 @@ library(ggplot2)
 library(gridExtra)
 library(tidyr)
 
-Window = 151
-Ylim = 3
 Organism == "Human"
 
 par(mar=c(5, 4, 4, 2))
@@ -40,7 +38,7 @@ file_list = list.files(pattern="*.csv")
 data_list <- vector("list", "length" = length(file_list))  
 
 for(i in seq_along(file_list)){
-  i = 1
+  #i = 1
   filename = file_list[[i]]
   data <- read.csv(filename, header = TRUE, sep = "\t")
   
@@ -112,21 +110,24 @@ for(i in seq_along(file_list)){
   # als tumor en normaal hebben, maak dan de plots
   if(plottable1$GeneId == plottable2$GeneId) {
     
+    # NORMAAL
     #tabel maken met gemiddelde expressiewaarden per regio
     plottablen <- data.frame(Chromosome=plottable1$Chromosoom[1], Region=plottable1$Region[1], GeneId=plottable1$GeneId[1] ,Expression=c(NA))
     Expressionlist <- c(plottable1$Expression[1])
-    i = 2
-    for (i in 2:nrow(plottable1)){
-      if (plottable1$Region[i-1] != plottable1$Region[i]) {
+    #a = 2
+    for (a in 2:nrow(plottable1)){
+      if (plottable1$Region[a-1] != plottable1$Region[a]) {
         plottablen$Expression[is.na(plottablen$Expression)] = mean(Expressionlist)
-        newrow = c(plottable1$Chromosoom[i], as.character(plottable1$Region[i]),as.character(plottable1$GeneId[i]),plottablen$Expression[NA])
+        newrow = c(plottable1$Chromosoom[a], as.character(plottable1$Region[a]),as.character(plottable1$GeneId[a]),plottablen$Expression[NA])
         plottablen <- rbind(plottablen,newrow)
         Expressionlist <- c()
       }
-      Expressionlist <- append(Expressionlist,plottable1$Expression[i])
-      i = i+1
-      # nog toevoegen dat hij bij de laatste loop ook de mean van expressionlist toevoegd aan de dataframe
+      Expressionlist <- append(Expressionlist,plottable1$Expression[a])
+     # a = a+1
     }
+    # na de laatste loop ook de mean van expressionlist toevoegen aan de dataframe
+    plottablen$Expression[is.na(plottablen$Expression)] = mean(Expressionlist)
+    
     plottablen$Chromosome <- as.numeric(plottablen$Chromosome)
     plottablen$Region <- as.character(plottablen$Region)
     plottablen$GeneId <- as.character(plottablen$GeneI)
@@ -140,20 +141,70 @@ for(i in seq_along(file_list)){
     colnames(stop) <- c('Chromosome', 'Position', 'Expression')
     
     plottablen<-as.data.frame(rbind(start, stop)) # plakt stop kolom onder start
-    plottablen <- plottablen[order(plottablen[,1]),]
     
     # alle chormosomen in tabel zetten, als er geen expressie van is, dan is deze 0
     for(x in 1 :24){
-      x = 1
+      #x = 1
       if(!(x %in% plottablen$Chromosome)){
-        newerrow = c(plottablen$Chromosome <- x, plottablen$Expression <- 0)
-        plottablen2 <- rbind(plottablen,newerrow)
+        newrow = c(x,chr_total[x],0)
+        newerrow = c(x,chr_total[x+1],0)
+        plottablen <- rbind(plottablen,newrow,newerrow)
       }
+      #x = x+1
     }
     
-    #png(filename=paste("Expressiemeanplot-",code, ".png", sep=""), width = 1980, height = 1080, units = "px")
-    #par(mfrow=c(2,1))
-    plot(plottablen$Position, plottablen$Expression, type = "l")
+    plottablen$Position <- as.numeric(plottablen$Position)
+    plottablen <- plottablen[order(plottablen[,2]),]
+    
+    # TUMOR
+    #tabel maken met gemiddelde expressiewaarden per regio
+    plottablet <- data.frame(Chromosome=plottable2$Chromosoom[1], Region=plottable2$Region[1], GeneId=plottable2$GeneId[1] ,Expression=c(NA))
+    Expressionlist <- c(plottable2$Expression[1])
+    #z = 2
+    for (z in 2:nrow(plottable2)){
+      if (plottable2$Region[z-1] != plottable2$Region[z]) {
+        plottablet$Expression[is.na(plottablet$Expression)] = mean(Expressionlist)
+        newrow = c(plottable2$Chromosoom[z], as.character(plottable2$Region[z]),as.character(plottable2$GeneId[z]),plottablet$Expression[NA])
+        plottablet <- rbind(plottablet,newrow)
+        Expressionlist <- c()
+      }
+      Expressionlist <- append(Expressionlist,plottable2$Expression[z])
+      #z = z+1
+    }
+    # na de laatste loop ook de mean van expressionlist toevoegen aan de dataframe
+    plottablet$Expression[is.na(plottablet$Expression)] = mean(Expressionlist)
+    
+    plottablet$Chromosome <- as.numeric(plottablet$Chromosome)
+    plottablet$Region <- as.character(plottablet$Region)
+    plottablet$GeneId <- as.character(plottablet$GeneI)
+    plottablet$Expression <- as.numeric(plottablet$Expression)
+    
+    plottablet <- separate(data = plottablet, col = Region, into = c("Start", "Stop"), sep = "\\-")
+    
+    start = plottablet[,c('Chromosome', 'Start', 'Expression')]
+    colnames(start) <- c('Chromosome', 'Position', 'Expression')
+    stop = plottablet[,c('Chromosome', 'Stop', 'Expression')]
+    colnames(stop) <- c('Chromosome', 'Position', 'Expression')
+    
+    plottablet<-as.data.frame(rbind(start, stop)) # plakt stop kolom onder start
+    
+    # alle chormosomen in tabel zetten, als er geen expressie van is, dan is deze 0
+    for(x in 1 :24){
+      #x = 1
+      if(!(x %in% plottablet$Chromosome)){
+        newrow = c(x,chr_total[x],0)
+        newerrow = c(x,chr_total[x+1],0)
+        plottablet <- rbind(plottablet,newrow,newerrow)
+      }
+      #x = x+1
+    }
+    
+    plottablet$Position <- as.numeric(plottablet$Position)
+    plottablet <- plottablet[order(plottablet[,2]),]
+    
+    png(filename=paste("Expressiemeanplot-",code, ".png", sep=""), width = 1980, height = 1080, units = "px")
+    par(mfrow=c(2,1))
+    plot(plottablen$Position, plottablen$Expression,pch=15,cex=0.4, type = "l",col="dimgrey", main = "Normaal", xlab="", ylab="Expression", xaxt = "n",xlim=c(1,genome_size), ylim=c(1,150)) #
     # Draw chromosome guide lines + chromosoom cijfers
     for(y in 1 :24){
       if (y>1){abline(v=chr_total[y],col="gray48")}
@@ -162,8 +213,17 @@ for(i in seq_along(file_list)){
       mtext(as.character(y),side=3, at=chr_total[y]+chr_size[y]/2,cex=0.8)
     }
     
-    #dev.off()
+    plot(plottablet$Position, plottablet$Expression,pch=15,cex=0.4, type = "l",col="dimgrey", main = "Tumor", xlab="Chromosomal position", ylab="Expression", xaxt = "n",xlim=c(1,genome_size), ylim=c(1,150)) #
+    # Draw chromosome guide lines + chromosoom cijfers
+    for(y in 1 :24){
+      if (y>1){abline(v=chr_total[y],col="gray48")}
+      abline(v=chr_total[y]+centromere_pos[y],col="gray55",lty=4)
+      #mtext(chr_total[y]+centromere_pos[y], side=1,at=chr_total[y]+centromere_pos[y], cex=0.5)
+      mtext(as.character(y),side=3, at=chr_total[y]+chr_size[y]/2,cex=0.8)
+    }
+    
+    dev.off()
   }
   
-  i = i+1
+  #i = i+1
 }
