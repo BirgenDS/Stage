@@ -5,10 +5,10 @@ library(ggplot2)
 library(gridExtra)
 library(tidyr)
 
-Organism == "Human"
+Organism = "Human"
 
 par(mar=c(5, 4, 4, 2))
-window=Window
+window=151
 
 if(Organism == "Human"){
   centromere_pos=c(125,93.3,91,50.4,48.4,61,59.9,45.6,49,40.2,53.7,35.8,17.9,17.6,19,36.6,24,17.2,26.5,27.5,13.2,14.7,60.6,12.5)
@@ -28,6 +28,9 @@ setwd("~/Documents/Howest/Stage/CMGG/RNA-seq_CNV/BRCA")
 datn <- read.table("BRCA_n_geneENS_tpm.txt",header=TRUE,sep="\t")
 datt <- read.table("BRCA_t_geneENS_tpm.txt",header=TRUE,sep="\t")
 
+# aantal normale stalen in de tumor data, dus alle stalen met 01B in het midden mogen verwijderd 
+datt <- datt[, -grep("01B", colnames(datt))]
+
 #datn <- read.table("THYM_n_geneENS_tpm.txt",header=TRUE,sep="\t")
 #datt <- read.table("THYM_t_geneENS_tpm.txt",header=TRUE,sep="\t")
 
@@ -43,14 +46,22 @@ for(i in seq_along(file_list)){
   data <- read.csv(filename, header = TRUE, sep = "\t")
   
   code <- file_path_sans_ext(filename)
+  code <- substr(code, 6,17)
 
   # NORMAL
   # dataframe from datn with only this code
-  
   tryCatch({
     j <- grep(code, colnames(datn))
     
     exprn <- data.frame(datn$X,datn[,j])
+    
+    # bij meerdere expressions voor 1 staal het gemiddelde nemen
+    if(ncol(exprn) > 2){
+      exprn$Mean <- rowMeans(exprn[,2:ncol(exprn)],na.rm = TRUE)
+      exprn$Mean <- round(exprn$Mean, digits = 6)
+      exprn <- data.frame(exprn$datn.X,exprn$Mean)
+    }
+    
     colnames(exprn) <- c('GeneId', 'Expression')
     
     # searching for GeneId and merging the expression to data
@@ -60,8 +71,6 @@ for(i in seq_along(file_list)){
     
     genesn <- genesn[c("Chromosoom", "Start", "Stop","GeneId", "Expression")]
     
-    setwd("~/Documents/Howest/Stage/CMGG/RNA-seq_CNV/BRCA/Expressietabellen")
-    #setwd("~/Documents/Howest/Stage/CMGG/RNA-seq_CNV/THYM/Expressietabellen")
     #write.table(genesn, file=paste(code, "_normal.csv", sep=""),sep = "\t", col.names  = TRUE, row.names = FALSE)
     
   }, error=function(e){cat("ERROR :",code,"not in normal data.\n")
@@ -92,11 +101,9 @@ for(i in seq_along(file_list)){
     
     genest <- genest[c("Chromosoom", "Start", "Stop","GeneId", "Expression")]
     
-    setwd("~/Documents/Howest/Stage/CMGG/RNA-seq_CNV/BRCA/Expressietabellen")
-    #setwd("~/Documents/Howest/Stage/CMGG/RNA-seq_CNV/THYM/Expressietabellen")
     #write.table(genest, file=paste(code, "_tumor.csv", sep=""),sep = "\t", col.names  = TRUE, row.names = FALSE)
     
-  }, error=function(e){cat("ERROR : ",code,"  not in tumor data.\n")
+  }, error=function(e){cat("ERROR : ",code,"not in tumor data.\n")
   }, finally = {
     start2 = genest[,c('Chromosoom', 'Start',  'GeneId','Expression')]
     stop2 = genest[,c('Chromosoom', 'Stop', 'GeneId', 'Expression')]
@@ -123,7 +130,7 @@ for(i in seq_along(file_list)){
         Expressionlist <- c()
       }
       Expressionlist <- append(Expressionlist,plottable1$Expression[a])
-     # a = a+1
+      #a = a+1
     }
     # na de laatste loop ook de mean van expressionlist toevoegen aan de dataframe
     plottablen$Expression[is.na(plottablen$Expression)] = mean(Expressionlist)
