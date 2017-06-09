@@ -30,13 +30,16 @@ for (i in 1:(length(chr_size)-1)){
 # chromosome 23 and 24 not in plot
 genome_size=sum(chr_size[1:22])
 
-setwd("~/Documents/Howest/Stage/CMGG/RNA-seq_CNV/BRCA")
+setwd("~/Documents/Howest/Stage/CMGG/RNA-seq_CNV/KIRC")
 
-datn <- read.delim("BRCA_n_geneENS_counts.txt", row.names = 1)
-datt <- read.delim("BRCA_t_geneENS_counts.txt", row.names = 1)
+datn <- read.delim("KIRC_n_geneENS_counts.txt", row.names = 1)
+datt <- read.delim("KIRC_t_geneENS_counts.txt", row.names = 1)
 
 # aantal tumor stalen in de normale data, dus alle stalen met 01B in het midden mogen verwijderd 
-datn <- datn[, -grep("01B", colnames(datn))]
+drop.cols <- grep("01B", colnames(datn))
+if(length(drop.cols) != 0){
+  datn <- datn[, -grep("01B", colnames(datn))]
+} else{datn <- datn}
 
 # data normaliseren
 library("limma")
@@ -58,6 +61,9 @@ dge <- calcNormFactors(dge,method='RLE')
 
 counts_norm<-as.data.frame(cpm(dge, normalized.lib.sizes = TRUE))
 
+# referentiestaal toevoegen aan datn voor als er geen matching normal is
+counts_norm$mean <- rowMeans(counts_norm[,])
+
 # lijst van alle genen
 setwd("~/Documents/Howest/Stage/CMGG/RNA-seq_CNV")
 allgenes <- read.table("allgenes.txt",header=TRUE,sep="\t")
@@ -69,40 +75,25 @@ for(x in 1:22){
   start = allgenes$Start[allgenes$Chromosome == x]
   start = as.numeric(start)
   allgenes$Start[allgenes$Chromosome == x] = start + chr_total[x]
-}
-for(x in 1:22){
   stop = allgenes$Stop[allgenes$Chromosome == x]
   stop = as.numeric(stop)
   allgenes$Stop[allgenes$Chromosome == x] = stop + chr_total[x]
 }
 
 # plaats van de code in de data frame zoeken
-setwd("~/Documents/Howest/Stage/CMGG/RNA-seq_CNV/BRCA/Gene-tabellen")
+setwd("~/Documents/Howest/Stage/CMGG/RNA-seq_CNV/KIRC/Gene-tabellen")
 
 file_list = list.files(pattern="*.csv")
 data_list <- vector("list", "length" = length(file_list))  
 
-# nieuwe dataframe maken met kolommen met huidige code
 for(i in seq_along(file_list)){
-  i = 1
+  #i = 1
+  setwd("~/Documents/Howest/Stage/CMGG/RNA-seq_CNV/KIRC/Gene-tabellen")
   
   filename = file_list[[i]]
   data <- read.csv(filename, header = TRUE, sep = "\t")
   
   code <- file_path_sans_ext(filename)
-  
-  # # allgenes begint van 0, in deze file telt de positie op, dus berekenen -> allgenes aangepast
-  # data1 <- data.frame(Chromosome=data$Chromosome[1], Start=c(NA), Stop=c(NA))
-  # for(chr in 1:nrow(data)){
-  #   chrom = data$Chromosome[chr]
-  #   number1 = data$Start[chr]
-  #   number2 = data$Stop[chr]
-  #   data1$Start[is.na(data1$Start)] = number1 - chr_total[chrom]
-  #   data1$Stop[is.na(data1$Stop)] = number2 - chr_total[chrom]
-  #   newrow = c(data$Chromosome[chr+1], data1$Start[NA], data1$Stop[NA])
-  #   data1 <- rbind(data1,newrow)
-  # }
-  # data1 <- na.omit(data1)
   
   # genen uit allgenes halen die in de regio's zitten uit bovenstaande dataframe
   results <- data.frame(Chromosome=numeric(), Start=numeric(), Stop=numeric(), GeneId=character(), stringsAsFactors=FALSE)
@@ -124,356 +115,357 @@ for(i in seq_along(file_list)){
   }
   
   # NORMAL
-  # dataframe from datn with only this code
-  tryCatch({
-    code1 <- substr(code, 6,17)
-    j <- grep(code1, colnames(datn))
-    listn <- paste("normal",j)
-    
-    col.num <- which(colnames(counts_norm) %in% listn)
+  # dataframe from counts_norm with only this code
+  
+  code1 <- substr(code, 6,17)
+  j <- grep(code1, colnames(datn))
+  listn <- paste("normal",j)
+  col.num <- which(colnames(counts_norm) %in% listn)
+  
+  if(length(j) == 0) {
+    exprn <- as.data.frame(counts_norm[,ncol(counts_norm)], row.names(counts_norm))
+  } else if(length(j) == 1){
+    exprn <- as.data.frame(counts_norm[,col.num], row.names(counts_norm))
+  } else{
     exprn <- counts_norm[,col.num]
-    
-    # eerst overal +1 doen en dan de log nemen
-    exprn <- exprn + 1
-    exprn[,1:ncol(exprn)] <- log(exprn[1:ncol(exprn)], 2)
-    
-    if(ncol(exprn) > 1){
-      exprn$Mean <- rowMeans(exprn[,1:ncol(exprn)],na.rm = TRUE)
-      exprn$Mean <- round(exprn$Mean, digits = 6)
-      `%ni%` <- Negate(`%in%`)
-      exprn <- subset(exprn,select = names(exprn) %ni% listn)
+  }
+  
+  # eerst overal +1 doen en dan de log nemen
+  exprn <- exprn + 1
+  exprn[,1:ncol(exprn)] <- log(exprn[1:ncol(exprn)], 2)
+  
+  # als meer dan 1 match in data, mean nemen van expressiewaarden
+  if(ncol(exprn) > 1){
+    exprn$Mean <- rowMeans(exprn[,1:ncol(exprn)],na.rm = TRUE)
+    exprn$Mean <- round(exprn$Mean, digits = 6)
+    `%ni%` <- Negate(`%in%`)
+    exprn <- subset(exprn,select = names(exprn) %ni% listn)
+  }
+  
+  exprn <- setDT(exprn, keep.rownames = TRUE)[]
+  
+  colnames(exprn) <- c('GeneId', 'Expression')
+  
+  # searching for GeneId and merging the expression to genes in results
+  genes <- exprn[exprn$GeneId %in% results$GeneId,]
+  genesn <- merge(results, genes, all = TRUE, sort = FALSE)
+  #genesn <- genesn[order(genesn[,2]),]
+  genesn <- na.omit(genesn)
+  
+  genesn <- genesn[c("Chromosome", "Start", "Stop","GeneId", "Expression")]
+  
+  #setwd("~/Documents/Howest/Stage/CMGG/RNA-seq_CNV/KIRC/Expressietabellen")
+  #write.table(genesn, file=paste(code, "_normal.csv", sep=""),sep = "\t", col.names  = TRUE, row.names = FALSE)
+  
+  # pasting start en stop together in region
+  start = genesn[,c('Chromosome', 'Start',  'GeneId','Expression')]
+  stop = genesn[,c('Chromosome', 'Stop', 'GeneId', 'Expression')]
+  plottable1<-transform(genesn, Region=paste(Start, Stop, sep="-"))
+  plottable1<- plottable1[,c('Chromosome', 'Region', 'GeneId','Expression')]
+  plottable1$Region <- as.character(plottable1$Region)
+  
+  #tabel maken met gemiddelde expressiewaarden per regio
+  plottablen <- data.frame(Chromosome=numeric(), Region=numeric(), GeneId=character(), Expression=numeric(), stringsAsFactors=FALSE)
+  row1 <- c(Chromosome=plottable1$Chromosome[1], Region=plottable1$Region[1], GeneId=plottable1$GeneId[1] ,Expression=c(NA))
+  plottablen[nrow(plottablen)+1, ] <- row1
+  Expressionlist <- c(plottable1$Expression[1])
+  #a = 2
+  for (a in 2:nrow(plottable1)){
+    if (plottable1$Region[a-1] != plottable1$Region[a]) {
+      plottablen$Expression[is.na(plottablen$Expression)] = mean(Expressionlist)
+      newrow = c(plottable1$Chromosome[a], as.character(plottable1$Region[a]),as.character(plottable1$GeneId[a]),plottablen$Expression[NA])
+      plottablen <- rbind(plottablen,newrow)
+      Expressionlist <- c()
     }
+    Expressionlist <- append(Expressionlist,plottable1$Expression[a])
+    #a = a+1
+  }
+  # na de laatste loop ook de mean van expressionlist toevoegen aan de dataframe
+  plottablen$Expression[is.na(plottablen$Expression)] = mean(Expressionlist)
+  
+  plottablen$Chromosome <- as.numeric(plottablen$Chromosome)
+  plottablen$Region <- as.character(plottablen$Region)
+  plottablen$GeneId <- as.character(plottablen$GeneI)
+  plottablen$Expression <- as.numeric(plottablen$Expression)
+  
+  # regio splitsen in start en stop en onder elkaar plakken
+  plottablen <- separate(data = plottablen, col = Region, into = c("Start", "Stop"), sep = "\\-")
+  
+  start = plottablen[,c('Chromosome', 'Start', 'Expression')]
+  colnames(start) <- c('Chromosome', 'Position', 'Expression')
+  stop = plottablen[,c('Chromosome', 'Stop', 'Expression')]
+  colnames(stop) <- c('Chromosome', 'Position', 'Expression')
+  
+  plottablen<-as.data.frame(rbind(start, stop)) # plakt stop kolom onder start
+  plottablen$Position <- as.numeric(plottablen$Position)
+  plottablen <- plottablen[order(plottablen[,2],plottablen[,1]),]
+  
+  # alle chormosomen in tabel zetten en ontbrekende stukken van aanwezige chromosomen
+  normal <- data.frame(Chromosome=numeric(), Position=numeric(), Expression=numeric(), stringsAsFactors=FALSE)
+  for(x in unique(plottablen$Chromosome)){
+    df <- (plottablen[plottablen$Chromosome==x, ])
     
-    exprn <- setDT(exprn, keep.rownames = TRUE)[]
-    
-    colnames(exprn) <- c('GeneId', 'Expression')
-    
-    # searching for GeneId and merging the expression to data
-    genes <- exprn[exprn$GeneId %in% results$GeneId,]
-    genesn <- merge(results, genes, all = TRUE, sort = FALSE)
-    #genesn <- genesn[order(genesn[,2]),]
-    genesn <- na.omit(genesn)
-    
-    genesn <- genesn[c("Chromosome", "Start", "Stop","GeneId", "Expression")]
-    
-    #setwd("~/Documents/Howest/Stage/CMGG/RNA-seq_CNV/KIRC/Expressietabellen")
-    #write.table(genesn, file=paste(code, "_normal.csv", sep=""),sep = "\t", col.names  = TRUE, row.names = FALSE)
-    
-  }, error=function(e){cat("ERROR :",code,"not in normal data.\n")
-  }, finally = {
-    start = genesn[,c('Chromosome', 'Start',  'GeneId','Expression')]
-    stop = genesn[,c('Chromosome', 'Stop', 'GeneId', 'Expression')]
-    plottable1<-transform(genesn, Region=paste(Start, Stop, sep="-"))
-    plottable1<- plottable1[,c('Chromosome', 'Region', 'GeneId','Expression')]
-    plottable1$Region <- as.character(plottable1$Region)
-  })
+    for(xx in 2:nrow(df)){
+      #xx = 2
+      if(nrow(df) == 2){
+        position = df$Position[xx-1]
+        position = as.numeric(position)
+        position1 = position - chr_total[x]
+        if(position1 != 0){
+          newererrow= c(x,chr_total[x],0)
+          newestrow= c(x,df$Position[xx-1],0)
+          normal[nrow(normal)+1, ] <- newererrow
+          normal[nrow(normal)+1, ] <- newestrow
+          startrow= c(x,df$Position[xx],0)
+          stoprow= c(x,chr_total[x+1],0)
+          normal[nrow(normal)+1, ] <- startrow
+          normal[nrow(normal)+1, ] <- stoprow
+        } else if(position1 == 0) {
+          newererrow= c(x,df$Position[xx],0)
+          newestrow= c(x,chr_total[x],0)
+          normal[nrow(normal)+1, ] <- newererrow
+          normal[nrow(normal)+1, ] <- newestrow
+        }
+      }
+      if(nrow(df) > 2){
+        if(df$Expression[xx-1] != df$Expression[xx]){
+          position = df$Position[xx-1]
+          position = as.numeric(position)
+          newererrow= c(x,position,0)
+          newestrow= c(x,df$Position[xx],0)
+          normal[nrow(normal)+1, ] <- newererrow
+          normal[nrow(normal)+1, ] <- newestrow
+        } else if(df$Expression[xx-1] == df$Expression[xx]){
+          position = df$Position[xx-1]
+          position = as.numeric(position)
+          position1 = position - chr_total[x]
+          if(position1 != 0 & position == df$Position[1]){
+            newererrow= c(x,chr_total[x],0)
+            newestrow= c(x,df$Position[xx-1],0)
+            normal[nrow(normal)+1, ] <- newererrow
+            normal[nrow(normal)+1, ] <- newestrow
+          } else if(position1 != 0 & df$Position[xx] == tail(df$Position, n=1)) {
+            newererrow= c(x,df$Position[xx],0)
+            newestrow= c(x,chr_total[x+1],0)
+            normal[nrow(normal)+1, ] <- newererrow
+            normal[nrow(normal)+1, ] <- newestrow
+          } 
+        }
+        #xx = xx+1
+      }
+      #x = x+1
+    }
+  }
+  
+  for(x in 1:22){
+    #x = 1
+    if(!(x %in% plottablen$Chromosome)){
+      newrow = c(x,chr_total[x],0)
+      newerrow = c(x,chr_total[x+1],0)
+      plottablen <- rbind(plottablen,newrow,newerrow)
+    }
+  }
+  
+  # rank aan toevoegen en sorteren
+  plottablen$Position <- as.numeric(plottablen$Position)
+  plottablen <- plottablen[order(plottablen[,2],plottablen[,1]),]
+  normal$Rank <- c(2,0)
+  plottablen$Rank <- 1
+  
+  normal2 <- rbind(plottablen, normal)
+  normal2 <- normal2[order(normal2[,1],normal2[,2], normal2[,4]),]
   
   # TUMOR
-  tryCatch({
-    code2 <- substr(code, 6,21)
-    k <- grep(code2, colnames(datt))
-    listt <- paste("tumor",k)
-    
-    col.numb <- which(colnames(counts_norm) %in% listt)
-    exprt <- counts_norm[,col.numb]
-    
-    # eerst overal +1 doen en dan de log nemen
-    exprt <- exprt + 1
-    exprt[,1:ncol(exprt)] <- log(exprt[1:ncol(exprt)], 2)
-    
-    if(ncol(exprt) > 1){
-      exprt$Mean <- rowMeans(exprt[,1:ncol(exprt)],na.rm = TRUE)
-      exprt$Mean <- round(exprt$Mean, digits = 6)
-      `%ni%` <- Negate(`%in%`)
-      exprt <- subset(exprt,select = names(exprt) %ni% listt)
-    }
-    
-    exprt <- setDT(exprt, keep.rownames = TRUE)[]
-    
-    colnames(exprt) <- c('GeneId', 'Expression')
-    
-    # searching for GeneId and merging the expression to data
-    genes <- exprt[exprt$GeneId %in% results$GeneId,]
-    genest <- merge(results, genes, all = TRUE, sort = FALSE)
-    #genest <- genest[order(genest[,2]),]
-    genest <- na.omit(genest)
-    
-    genest <- genest[c("Chromosome", "Start", "Stop","GeneId", "Expression")]
-    
-    #setwd("~/Documents/Howest/Stage/CMGG/RNA-seq_CNV/KIRC/Expressietabellen")
-    #write.table(genest, file=paste(code, "_tumor.csv", sep=""),sep = "\t", col.names  = TRUE, row.names = FALSE)
-    
-  }, error=function(e){cat("ERROR : ",code,"not in tumor data.\n")
-  }, finally = {
-    start2 = genest[,c('Chromosome', 'Start',  'GeneId','Expression')]
-    stop2 = genest[,c('Chromosome', 'Stop', 'GeneId', 'Expression')]
-    plottable2<-transform(genest, Region=paste(Start, Stop, sep="-"))
-    plottable2<- plottable2[,c('Chromosome', 'Region', 'GeneId','Expression')]
-    plottable2$Region <- as.character(plottable2$Region)
-  })
 
-  setwd("~/Documents/Howest/Stage/CMGG/RNA-seq_CNV/BRCA/Gene-tabellen")
+  code2 <- substr(code, 6,21)
+  k <- grep(code2, colnames(datt))
+  listt <- paste("tumor",k)
+  col.numb <- which(colnames(counts_norm) %in% listt)
   
-  # als tumor en normaal hebben, maak dan de plots
-  if(plottable1$GeneId == plottable2$GeneId) {
-    
-    # NORMAL
-    #tabel maken met gemiddelde expressiewaarden per regio
-    plottablen <- data.frame(Chromosome=numeric(), Region=numeric(), GeneId=character(), Expression=numeric(), stringsAsFactors=FALSE)
-    row1 <- c(Chromosome=plottable1$Chromosome[1], Region=plottable1$Region[1], GeneId=plottable1$GeneId[1] ,Expression=c(NA))
-    plottablen[nrow(plottablen)+1, ] <- row1
-    Expressionlist <- c(plottable1$Expression[1])
-    #a = 2
-    for (a in 2:nrow(plottable1)){
-      if (plottable1$Region[a-1] != plottable1$Region[a]) {
-        plottablen$Expression[is.na(plottablen$Expression)] = mean(Expressionlist)
-        newrow = c(plottable1$Chromosome[a], as.character(plottable1$Region[a]),as.character(plottable1$GeneId[a]),plottablen$Expression[NA])
-        plottablen <- rbind(plottablen,newrow)
-        Expressionlist <- c()
-      }
-      Expressionlist <- append(Expressionlist,plottable1$Expression[a])
-      #a = a+1
-    }
-    # na de laatste loop ook de mean van expressionlist toevoegen aan de dataframe
-    plottablen$Expression[is.na(plottablen$Expression)] = mean(Expressionlist)
-    
-    plottablen$Chromosome <- as.numeric(plottablen$Chromosome)
-    plottablen$Region <- as.character(plottablen$Region)
-    plottablen$GeneId <- as.character(plottablen$GeneI)
-    plottablen$Expression <- as.numeric(plottablen$Expression)
-    
-    plottablen <- separate(data = plottablen, col = Region, into = c("Start", "Stop"), sep = "\\-")
-    
-    start = plottablen[,c('Chromosome', 'Start', 'Expression')]
-    colnames(start) <- c('Chromosome', 'Position', 'Expression')
-    stop = plottablen[,c('Chromosome', 'Stop', 'Expression')]
-    colnames(stop) <- c('Chromosome', 'Position', 'Expression')
-    
-    plottablen<-as.data.frame(rbind(start, stop)) # plakt stop kolom onder start
-    plottablen$Position <- as.numeric(plottablen$Position)
-    plottablen <- plottablen[order(plottablen[,2],plottablen[,1]),]
-    
-    # alle chormosomen in tabel zetten en ontbrekende stukken van bestaande chromosomen
-    normal <- data.frame(Chromosome=numeric(), Position=numeric(), Expression=numeric(), stringsAsFactors=FALSE)
-    for(x in unique(plottablen$Chromosome)){
-      df <- (plottablen[plottablen$Chromosome==x, ])
-      
-      for(xx in 2:nrow(df)){
-        #xx = 2
-        if(nrow(df) == 2){
-          position = df$Position[xx-1]
-          position = as.numeric(position)
-          position1 = position - chr_total[x]
-          if(position1 != 0){
-            newererrow= c(x,chr_total[x],0)
-            newestrow= c(x,df$Position[xx-1],0)
-            normal[nrow(normal)+1, ] <- newererrow
-            normal[nrow(normal)+1, ] <- newestrow
-            startrow= c(x,df$Position[xx],0)
-            stoprow= c(x,chr_total[x+1],0)
-            normal[nrow(normal)+1, ] <- startrow
-            normal[nrow(normal)+1, ] <- stoprow
-          } else if(position1 == 0) {
-            newererrow= c(x,df$Position[xx],0)
-            newestrow= c(x,chr_total[x],0)
-            normal[nrow(normal)+1, ] <- newererrow
-            normal[nrow(normal)+1, ] <- newestrow
-          }
-        }
-        if(nrow(df) > 2){
-          if(df$Expression[xx-1] != df$Expression[xx]){
-            position = df$Position[xx-1]
-            position = as.numeric(position)
-            newererrow= c(x,position,0)
-            newestrow= c(x,df$Position[xx],0)
-            normal[nrow(normal)+1, ] <- newererrow
-            normal[nrow(normal)+1, ] <- newestrow
-          } else if(df$Expression[xx-1] == df$Expression[xx]){
-            position = df$Position[xx-1]
-            position = as.numeric(position)
-            position1 = position - chr_total[x]
-            if(position1 != 0 & position == df$Position[1]){
-              newererrow= c(x,chr_total[x],0)
-              newestrow= c(x,df$Position[xx-1],0)
-              normal[nrow(normal)+1, ] <- newererrow
-              normal[nrow(normal)+1, ] <- newestrow
-            } else if(position1 != 0 & df$Position[xx] == tail(df$Position, n=1)) {
-              newererrow= c(x,df$Position[xx],0)
-              newestrow= c(x,chr_total[x+1],0)
-              normal[nrow(normal)+1, ] <- newererrow
-              normal[nrow(normal)+1, ] <- newestrow
-            } 
-          }
-        #xx = xx+1
-        }
-      #x = x+1
-      }
-    }
-
-    for(x in 1:22){
-      #x = 1
-      if(!(x %in% plottablen$Chromosome)){
-        newrow = c(x,chr_total[x],0)
-        newerrow = c(x,chr_total[x+1],0)
-        plottablen <- rbind(plottablen,newrow,newerrow)
-      }
-    }
-    plottablen$Position <- as.numeric(plottablen$Position)
-    plottablen <- plottablen[order(plottablen[,2],plottablen[,1]),]
-    normal$Rank <- c(2,0)
-    plottablen$Rank <- 1
-    
-    normal2 <- rbind(plottablen, normal)
-    normal2 <- normal2[order(normal2[,1],normal2[,2], normal2[,4]),]
-    
-    # TUMOR
-    #tabel maken met gemiddelde expressiewaarden per regio
-    plottablet <- data.frame(Chromosome=numeric(), Region=numeric(), GeneId=character(), Expression=numeric(), stringsAsFactors=FALSE)
-    row1 <- c(Chromosome=plottable2$Chromosome[1], Region=plottable2$Region[1], GeneId=plottable2$GeneId[1] ,Expression=c(NA))
-    plottablet[nrow(plottablet)+1, ] <- row1
-    Expressionlist <- c(plottable2$Expression[1])
-    #z = 2
-    for (z in 2:nrow(plottable2)){
-      if (plottable2$Region[z-1] != plottable2$Region[z]) {
-        plottablet$Expression[is.na(plottablet$Expression)] = mean(Expressionlist)
-        newrow = c(plottable2$Chromosome[z], as.character(plottable2$Region[z]),as.character(plottable2$GeneId[z]),plottablet$Expression[NA])
-        plottablet <- rbind(plottablet,newrow)
-        Expressionlist <- c()
-      }
-      Expressionlist <- append(Expressionlist,plottable2$Expression[z])
-      #z = z+1
-    }
-    # na de laatste loop ook de mean van expressionlist toevoegen aan de dataframe
-    plottablet$Expression[is.na(plottablet$Expression)] = mean(Expressionlist)
-    
-    plottablet$Chromosome <- as.numeric(plottablet$Chromosome)
-    plottablet$Region <- as.character(plottablet$Region)
-    plottablet$GeneId <- as.character(plottablet$GeneI)
-    plottablet$Expression <- as.numeric(plottablet$Expression)
-    
-    plottablet <- separate(data = plottablet, col = Region, into = c("Start", "Stop"), sep = "\\-")
-    
-    start = plottablet[,c('Chromosome', 'Start', 'Expression')]
-    colnames(start) <- c('Chromosome', 'Position', 'Expression')
-    stop = plottablet[,c('Chromosome', 'Stop', 'Expression')]
-    colnames(stop) <- c('Chromosome', 'Position', 'Expression')
-    
-    plottablet<-as.data.frame(rbind(start, stop)) # plakt stop kolom onder start
-    plottablet$Position <- as.numeric(plottablet$Position)
-    plottablet <- plottablet[order(plottablet[,2],plottablet[,1]),]
-    
-    # alle chormosomen in tabel zetten en ontbrekende stukken van bestaande chromosomen
-    tumor <- data.frame(Chromosome=numeric(), Position=numeric(), Expression=numeric(),stringsAsFactors=FALSE)
-    for(x in unique(plottablet$Chromosome)){
-      df <- (plottablet[plottablet$Chromosome==x, ])
-      
-      for(xx in 2:nrow(df)){
-        #xx = 2
-        if(nrow(df) == 2){
-          position = df$Position[xx-1]
-          position = as.numeric(position)
-          position1 = position - chr_total[x]
-          if(position1 != 0){
-            newererrow= c(x,chr_total[x],0)
-            newestrow= c(x,df$Position[xx-1],0)
-            tumor[nrow(tumor)+1, ] <- newererrow
-            tumor[nrow(tumor)+1, ] <- newestrow
-            startrow= c(x,df$Position[xx],0)
-            stoprow= c(x,chr_total[x+1],0)
-            tumor[nrow(tumor)+1, ] <- startrow
-            tumor[nrow(tumor)+1, ] <- stoprow
-          } else if(position1 == 0) {
-            newererrow= c(x,df$Position[xx],0)
-            newestrow= c(x,chr_total[x],0)
-            tumor[nrow(tumor)+1, ] <- newererrow
-            tumor[nrow(tumor)+1, ] <- newestrow
-          }
-        }
-        if(nrow(df) > 2){
-          if(df$Expression[xx-1] != df$Expression[xx]){
-            position = df$Position[xx-1]
-            position = as.numeric(position)
-            newererrow= c(x,position,0)
-            newestrow= c(x,df$Position[xx],0)
-            tumor[nrow(tumor)+1, ] <- newererrow
-            tumor[nrow(tumor)+1, ] <- newestrow
-          } else if(df$Expression[xx-1] == df$Expression[xx]){
-            position = df$Position[xx-1]
-            position = as.numeric(position)
-            position1 = position - chr_total[x]
-            if(position1 != 0 & position == df$Position[1]){
-              newererrow= c(x,chr_total[x],0)
-              newestrow= c(x,df$Position[xx-1],0)
-              tumor[nrow(tumor)+1, ] <- newererrow
-              tumor[nrow(tumor)+1, ] <- newestrow
-            } else if(position1 != 0 & df$Position[xx] == tail(df$Position, n=1)) {
-              newererrow= c(x,df$Position[xx],0)
-              newestrow= c(x,chr_total[x+1],0)
-              tumor[nrow(tumor)+1, ] <- newererrow
-              tumor[nrow(tumor)+1, ] <- newestrow
-            } 
-          }
-          #xx = xx+1
-        }
-        #x = x+1
-      }
-    }
-    
-    for(x in 1:22){
-      #x = 1
-      if(!(x %in% plottablet$Chromosome)){
-        newrow = c(x,chr_total[x],0)
-        newerrow = c(x,chr_total[x+1],0)
-        plottablet <- rbind(plottablet,newrow,newerrow)
-      }
-    }
-    plottablet$Position <- as.numeric(plottablet$Position)
-    plottablet <- plottablet[order(plottablet[,2],plottablet[,1]),]
-    tumor$Rank <- c(2,0)
-    plottablet$Rank <- 1
-    
-    tumor2 <- rbind(plottablet, tumor)
-    tumor2 <- tumor2[order(tumor2[,1],tumor2[,2], tumor2[,4]),]
-    
-    # ratio tumor min door normaal
-    plottable <- data.frame(Chromosome=normal2$Chromosome, Position=normal2$Position, ExpressionN=normal2$Expression, ExpressionT=tumor2$Expression,ExpressionRatio=tumor2$Expression-normal2$Expression)
-    #plottable <- replace(plottable, is.na(plottable), 0)
-    #plottable <- do.call(data.frame,lapply(plottable, function(x) replace(x, is.infinite(x),0)))
-    
-    plottable <- plottable[plottable$Chromosome != 23, ] 
-    plottable <- plottable[plottable$Chromosome != 24, ]
-    
-    #png(filename=paste("Expressiemeanplot_counts-",code, ".png", sep=""), width = 1980, height = 1080, units = "px")
-    par(mfrow=c(3,1))
-    plot(plottable$Position, plottable$ExpressionN,pch=15,cex=0.4, type = "l",col="dimgrey", main = "Normal", xlab="Chromosomal position", ylab="Expression", xaxt = "n",xlim=c(1,genome_size), ylim=c(-1,5)) #
-    # Draw chromosome guide lines + Chromosome cijfers
-    for(y in 1 :22){
-      if (y>1){abline(v=chr_total[y],col="gray48")}
-      abline(v=chr_total[y]+centromere_pos[y],col="gray55",lty=4)
-      #mtext(chr_total[y]+centromere_pos[y], side=1,at=chr_total[y]+centromere_pos[y], cex=0.5)
-      mtext(as.character(y),side=3, at=chr_total[y]+chr_size[y]/2,cex=0.8)
-    }
-    
-    plot(plottable$Position, plottable$ExpressionT,pch=15,cex=0.4, type = "l",col="dimgrey", main = "Tumor", xlab="Chromosomal position", ylab="Expression", xaxt = "n",xlim=c(1,genome_size), ylim=c(-1,5)) #
-    # Draw chromosome guide lines + Chromosome cijfers
-    for(y in 1 :22){
-      if (y>1){abline(v=chr_total[y],col="gray48")}
-      abline(v=chr_total[y]+centromere_pos[y],col="gray55",lty=4)
-      #mtext(chr_total[y]+centromere_pos[y], side=1,at=chr_total[y]+centromere_pos[y], cex=0.5)
-      mtext(as.character(y),side=3, at=chr_total[y]+chr_size[y]/2,cex=0.8)
-    }
-    
-    plot(plottable$Position, plottable$ExpressionRatio,pch=15,cex=0.4, type = "l",col="dimgrey", main = "Ratio", xlab="Chromosomal position", ylab="Expression", xaxt = "n",xlim=c(1,genome_size), ylim=c(-1,5)) #
-    # Draw chromosome guide lines + Chromosome cijfers
-    for(y in 1 :22){
-      if (y>1){abline(v=chr_total[y],col="gray48")}
-      abline(v=chr_total[y]+centromere_pos[y],col="gray55",lty=4)
-      #mtext(chr_total[y]+centromere_pos[y], side=1,at=chr_total[y]+centromere_pos[y], cex=0.5)
-      mtext(as.character(y),side=3, at=chr_total[y]+chr_size[y]/2,cex=0.8)
-    }
-    
-    #dev.off()
+  if(length(k) == 1) {
+    exprt <- as.data.frame(counts_norm[,col.numb], row.names(counts_norm))
+  } else{
+    exprt <- counts_norm[,col.numb]
   }
+  
+  # eerst overal +1 doen en dan de log nemen
+  exprt <- exprt + 1
+  exprt[,1:ncol(exprt)] <- log(exprt[1:ncol(exprt)], 2)
+  
+  if(ncol(exprt) > 1){
+    exprt$Mean <- rowMeans(exprt[,1:ncol(exprt)],na.rm = TRUE)
+    exprt$Mean <- round(exprt$Mean, digits = 6)
+    `%ni%` <- Negate(`%in%`)
+    exprt <- subset(exprt,select = names(exprt) %ni% listt)
+  }
+  
+  exprt <- setDT(exprt, keep.rownames = TRUE)[]
+  
+  colnames(exprt) <- c('GeneId', 'Expression')
+  
+  # searching for GeneId and merging the expression to data
+  genes <- exprt[exprt$GeneId %in% results$GeneId,]
+  genest <- merge(results, genes, all = TRUE, sort = FALSE)
+  #genest <- genest[order(genest[,2]),]
+  genest <- na.omit(genest)
+  
+  genest <- genest[c("Chromosome", "Start", "Stop","GeneId", "Expression")]
+  
+  #setwd("~/Documents/Howest/Stage/CMGG/RNA-seq_CNV/KIRC/Expressietabellen")
+  #write.table(genest, file=paste(code, "_tumor.csv", sep=""),sep = "\t", col.names  = TRUE, row.names = FALSE)
+
+  start2 = genest[,c('Chromosome', 'Start',  'GeneId','Expression')]
+  stop2 = genest[,c('Chromosome', 'Stop', 'GeneId', 'Expression')]
+  plottable2<-transform(genest, Region=paste(Start, Stop, sep="-"))
+  plottable2<- plottable2[,c('Chromosome', 'Region', 'GeneId','Expression')]
+  plottable2$Region <- as.character(plottable2$Region)
+  
+  #tabel maken met gemiddelde expressiewaarden per regio
+  plottablet <- data.frame(Chromosome=numeric(), Region=numeric(), GeneId=character(), Expression=numeric(), stringsAsFactors=FALSE)
+  row1 <- c(Chromosome=plottable2$Chromosome[1], Region=plottable2$Region[1], GeneId=plottable2$GeneId[1] ,Expression=c(NA))
+  plottablet[nrow(plottablet)+1, ] <- row1
+  Expressionlist <- c(plottable2$Expression[1])
+  #z = 2
+  for (z in 2:nrow(plottable2)){
+    if (plottable2$Region[z-1] != plottable2$Region[z]) {
+      plottablet$Expression[is.na(plottablet$Expression)] = mean(Expressionlist)
+      newrow = c(plottable2$Chromosome[z], as.character(plottable2$Region[z]),as.character(plottable2$GeneId[z]),plottablet$Expression[NA])
+      plottablet <- rbind(plottablet,newrow)
+      Expressionlist <- c()
+    }
+    Expressionlist <- append(Expressionlist,plottable2$Expression[z])
+    #z = z+1
+  }
+  # na de laatste loop ook de mean van expressionlist toevoegen aan de dataframe
+  plottablet$Expression[is.na(plottablet$Expression)] = mean(Expressionlist)
+  
+  plottablet$Chromosome <- as.numeric(plottablet$Chromosome)
+  plottablet$Region <- as.character(plottablet$Region)
+  plottablet$GeneId <- as.character(plottablet$GeneI)
+  plottablet$Expression <- as.numeric(plottablet$Expression)
+  
+  plottablet <- separate(data = plottablet, col = Region, into = c("Start", "Stop"), sep = "\\-")
+  
+  start = plottablet[,c('Chromosome', 'Start', 'Expression')]
+  colnames(start) <- c('Chromosome', 'Position', 'Expression')
+  stop = plottablet[,c('Chromosome', 'Stop', 'Expression')]
+  colnames(stop) <- c('Chromosome', 'Position', 'Expression')
+  
+  plottablet<-as.data.frame(rbind(start, stop)) # plakt stop kolom onder start
+  plottablet$Position <- as.numeric(plottablet$Position)
+  plottablet <- plottablet[order(plottablet[,2],plottablet[,1]),]
+  
+  # alle chormosomen in tabel zetten en ontbrekende stukken van bestaande chromosomen
+  tumor <- data.frame(Chromosome=numeric(), Position=numeric(), Expression=numeric(),stringsAsFactors=FALSE)
+  for(x in unique(plottablet$Chromosome)){
+    df <- (plottablet[plottablet$Chromosome==x, ])
+    
+    for(xx in 2:nrow(df)){
+      #xx = 2
+      if(nrow(df) == 2){
+        position = df$Position[xx-1]
+        position = as.numeric(position)
+        position1 = position - chr_total[x]
+        if(position1 != 0){
+          newererrow= c(x,chr_total[x],0)
+          newestrow= c(x,df$Position[xx-1],0)
+          tumor[nrow(tumor)+1, ] <- newererrow
+          tumor[nrow(tumor)+1, ] <- newestrow
+          startrow= c(x,df$Position[xx],0)
+          stoprow= c(x,chr_total[x+1],0)
+          tumor[nrow(tumor)+1, ] <- startrow
+          tumor[nrow(tumor)+1, ] <- stoprow
+        } else if(position1 == 0) {
+          newererrow= c(x,df$Position[xx],0)
+          newestrow= c(x,chr_total[x],0)
+          tumor[nrow(tumor)+1, ] <- newererrow
+          tumor[nrow(tumor)+1, ] <- newestrow
+        }
+      }
+      if(nrow(df) > 2){
+        if(df$Expression[xx-1] != df$Expression[xx]){
+          position = df$Position[xx-1]
+          position = as.numeric(position)
+          newererrow= c(x,position,0)
+          newestrow= c(x,df$Position[xx],0)
+          tumor[nrow(tumor)+1, ] <- newererrow
+          tumor[nrow(tumor)+1, ] <- newestrow
+        } else if(df$Expression[xx-1] == df$Expression[xx]){
+          position = df$Position[xx-1]
+          position = as.numeric(position)
+          position1 = position - chr_total[x]
+          if(position1 != 0 & position == df$Position[1]){
+            newererrow= c(x,chr_total[x],0)
+            newestrow= c(x,df$Position[xx-1],0)
+            tumor[nrow(tumor)+1, ] <- newererrow
+            tumor[nrow(tumor)+1, ] <- newestrow
+          } else if(position1 != 0 & df$Position[xx] == tail(df$Position, n=1)) {
+            newererrow= c(x,df$Position[xx],0)
+            newestrow= c(x,chr_total[x+1],0)
+            tumor[nrow(tumor)+1, ] <- newererrow
+            tumor[nrow(tumor)+1, ] <- newestrow
+          } 
+        }
+        #xx = xx+1
+      }
+      #x = x+1
+    }
+  }
+  
+  for(x in 1:22){
+    #x = 1
+    if(!(x %in% plottablet$Chromosome)){
+      newrow = c(x,chr_total[x],0)
+      newerrow = c(x,chr_total[x+1],0)
+      plottablet <- rbind(plottablet,newrow,newerrow)
+    }
+  }
+  plottablet$Position <- as.numeric(plottablet$Position)
+  plottablet <- plottablet[order(plottablet[,2],plottablet[,1]),]
+  tumor$Rank <- c(2,0)
+  plottablet$Rank <- 1
+  
+  tumor2 <- rbind(plottablet, tumor)
+  tumor2 <- tumor2[order(tumor2[,1],tumor2[,2], tumor2[,4]),]
+  
+  # PLOT
+  
+  # ratio tumor min door normaal
+  plottable <- data.frame(Chromosome=normal2$Chromosome, Position=normal2$Position, ExpressionN=normal2$Expression, ExpressionT=tumor2$Expression,ExpressionRatio=tumor2$Expression-normal2$Expression)
+  
+  # plottable <- plottable[plottable$Chromosome != 23, ] 
+  # plottable <- plottable[plottable$Chromosome != 24, ]
+  
+  png(filename=paste("Expressionmeanplot_counts-",code, ".png", sep=""), width = 1980, height = 1080, units = "px")
+  par(mfrow=c(3,1))
+  plot(plottable$Position, plottable$ExpressionN,pch=15,cex=0.4, type = "l",col="dimgrey", main = "Normal", xlab="", ylab="Expression", xaxt = "n",xlim=c(1,genome_size), ylim=c(-1,3)) #
+  # Draw chromosome guide lines + Chromosome cijfers
+  for(y in 1 :22){
+    if (y>1){abline(v=chr_total[y],col="gray48")}
+    abline(v=chr_total[y]+centromere_pos[y],col="gray55",lty=4)
+    #mtext(chr_total[y]+centromere_pos[y], side=1,at=chr_total[y]+centromere_pos[y], cex=0.5)
+    mtext(as.character(y),side=3, at=chr_total[y]+chr_size[y]/2,cex=0.8)
+  }
+  
+  plot(plottable$Position, plottable$ExpressionT,pch=15,cex=0.4, type = "l",col="dimgrey", main = "Tumor", xlab="", ylab="Expression", xaxt = "n",xlim=c(1,genome_size), ylim=c(-1,3)) #
+  # Draw chromosome guide lines + Chromosome cijfers
+  for(y in 1 :22){
+    if (y>1){abline(v=chr_total[y],col="gray48")}
+    abline(v=chr_total[y]+centromere_pos[y],col="gray55",lty=4)
+    #mtext(chr_total[y]+centromere_pos[y], side=1,at=chr_total[y]+centromere_pos[y], cex=0.5)
+    mtext(as.character(y),side=3, at=chr_total[y]+chr_size[y]/2,cex=0.8)
+  }
+  
+  plot(plottable$Position, plottable$ExpressionRatio,pch=15,cex=0.4, type = "l",col="dimgrey", main = "Ratio", xlab="Chromosomal position", ylab="Expression", xaxt = "n",xlim=c(1,genome_size), ylim=c(-1,3)) #
+  # Draw chromosome guide lines + Chromosome cijfers
+  for(y in 1 :22){
+    if (y>1){abline(v=chr_total[y],col="gray48")}
+    abline(v=chr_total[y]+centromere_pos[y],col="gray55",lty=4)
+    #mtext(chr_total[y]+centromere_pos[y], side=1,at=chr_total[y]+centromere_pos[y], cex=0.5)
+    mtext(as.character(y),side=3, at=chr_total[y]+chr_size[y]/2,cex=0.8)
+  }
+  
+  dev.off()
   
   #i = i+1
 
