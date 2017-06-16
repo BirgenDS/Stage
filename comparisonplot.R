@@ -16,7 +16,7 @@ source("eSNPKaryotyping/R/Edit_dbSNP_Files.R")
 source("eSNPKaryotyping/R/Sort_major_minor.R")
 
 # wrapperscript
-output_dir <- "/Users/Birgen/Documents/Howest/Stage/CMGG/RNA-seq_CNV/KIRC/TCGA-CZ-5467-01A-01R-1503-07_eSNPout/"
+output_dir <- "/Users/Birgen/Documents/Howest/Stage/CMGG/RNA-seq_CNV/KIRC/TCGA-A3-3306-01A-01R-0864-07_eSNPout/"
 input_dir <- "/Users/Birgen/Documents/Howest/Stage/CMGG/RNA-seq_CNV/"
 cancer_type <- "KIRC"
 Organism = "Human"
@@ -64,7 +64,6 @@ PlotGenome<-function(Output_Directory,orderedTable,Window,Ylim,Organism,CancerTy
   setwd(newDir)
   options(bitmapType='cairo')
   
-  par(mar=c(5, 4, 4, 2))
   window=Window
   #moving median
   
@@ -228,6 +227,7 @@ DataAnalysis <- function(chr_total, genome_size, allgenes, datn, datt, counts_no
   
   data <- read.csv(filename, header = TRUE, sep = "\t")
   
+  
   # genen uit allgenes halen die in de regio's zitten uit bovenstaande dataframe
   results <- data.frame(Chromosome=numeric(), Start=numeric(), Stop=numeric(), GeneId=character(), stringsAsFactors=FALSE)
   for(chr in 1:nrow(data)){
@@ -295,6 +295,51 @@ DataAnalysis <- function(chr_total, genome_size, allgenes, datn, datt, counts_no
   plottable1<- plottable1[,c('Chromosome', 'Region', 'GeneId','Expression')]
   plottable1$Region <- as.character(plottable1$Region)
   
+  # TUMOR
+
+  code2 <- substr(code, 1,16)
+  k <- grep(code2, colnames(datt))
+  listt <- paste("tumor",k)
+  col.numb <- which(colnames(counts_norm) %in% listt)
+  
+  if(length(k) == 1) {
+    exprt <- as.data.frame(counts_norm[,col.numb], row.names(counts_norm))
+  } else{
+    exprt <- counts_norm[,col.numb]
+  }
+  
+  # eerst overal +1 doen en dan de log nemen
+  exprt <- exprt + 1
+  exprt[,1:ncol(exprt)] <- log(exprt[1:ncol(exprt)], 2)
+  
+  if(ncol(exprt) > 1){
+    exprt$Mean <- rowMeans(exprt[,1:ncol(exprt)],na.rm = TRUE)
+    exprt$Mean <- round(exprt$Mean, digits = 6)
+    `%ni%` <- Negate(`%in%`)
+    exprt <- subset(exprt,select = names(exprt) %ni% listt)
+  }
+  
+  library("data.table")
+  exprt <- setDT(exprt, keep.rownames = TRUE)[]
+  
+  colnames(exprt) <- c('GeneId', 'Expression')
+  
+  # searching for GeneId and merging the expression to data
+  genes <- exprt[exprt$GeneId %in% results$GeneId,]
+  genest <- merge(results, genes, all = TRUE, sort = FALSE)
+  #genest <- genest[order(genest[,2]),]
+  genest <- na.omit(genest)
+  
+  genest <- genest[c("Chromosome", "Start", "Stop","GeneId", "Expression")]
+  
+  start2 = genest[,c('Chromosome', 'Start',  'GeneId','Expression')]
+  stop2 = genest[,c('Chromosome', 'Stop', 'GeneId', 'Expression')]
+  plottable2<-transform(genest, Region=paste(Start, Stop, sep="-"))
+  plottable2<- plottable2[,c('Chromosome', 'Region', 'GeneId','Expression')]
+  plottable2$Region <- as.character(plottable2$Region)
+  
+  # NORMAL
+
   #tabel maken met gemiddelde expressiewaarden per regio
   plottablen <- data.frame(Chromosome=numeric(), Region=numeric(), GeneId=character(), Expression=numeric(), stringsAsFactors=FALSE)
   row1 <- c(Chromosome=plottable1$Chromosome[1], Region=plottable1$Region[1], GeneId=plottable1$GeneId[1] ,Expression=c(NA))
@@ -313,29 +358,29 @@ DataAnalysis <- function(chr_total, genome_size, allgenes, datn, datt, counts_no
   }
   # na de laatste loop ook de mean van expressionlist toevoegen aan de dataframe
   plottablen$Expression[is.na(plottablen$Expression)] = mean(Expressionlist)
-  
+
   plottablen$Chromosome <- as.numeric(plottablen$Chromosome)
   plottablen$Region <- as.character(plottablen$Region)
   plottablen$GeneId <- as.character(plottablen$GeneI)
   plottablen$Expression <- as.numeric(plottablen$Expression)
-  
+
   # regio splitsen in start en stop en onder elkaar plakken
   plottablen <- separate(data = plottablen, col = Region, into = c("Start", "Stop"), sep = "\\-")
-  
+
   start = plottablen[,c('Chromosome', 'Start', 'Expression')]
   colnames(start) <- c('Chromosome', 'Position', 'Expression')
   stop = plottablen[,c('Chromosome', 'Stop', 'Expression')]
   colnames(stop) <- c('Chromosome', 'Position', 'Expression')
-  
+
   plottablen<-as.data.frame(rbind(start, stop)) # plakt stop kolom onder start
   plottablen$Position <- as.numeric(plottablen$Position)
   plottablen <- plottablen[order(plottablen[,2],plottablen[,1]),]
-  
+
   # alle chormosomen in tabel zetten en ontbrekende stukken van aanwezige chromosomen
   normal <- data.frame(Chromosome=numeric(), Position=numeric(), Expression=numeric(), stringsAsFactors=FALSE)
   for(x in unique(plottablen$Chromosome)){
     df <- (plottablen[plottablen$Chromosome==x, ])
-    
+
     for(xx in 2:nrow(df)){
       #xx = 2
       if(nrow(df) == 2){
@@ -380,14 +425,14 @@ DataAnalysis <- function(chr_total, genome_size, allgenes, datn, datt, counts_no
             newestrow= c(x,chr_total[x+1],0)
             normal[nrow(normal)+1, ] <- newererrow
             normal[nrow(normal)+1, ] <- newestrow
-          } 
+          }
         }
         #xx = xx+1
       }
       #x = x+1
     }
   }
-  
+
   for(x in 1:22){
     #x = 1
     if(!(x %in% plottablen$Chromosome)){
@@ -396,59 +441,19 @@ DataAnalysis <- function(chr_total, genome_size, allgenes, datn, datt, counts_no
       plottablen <- rbind(plottablen,newrow,newerrow)
     }
   }
-  
+
   # rank aan toevoegen en sorteren
   plottablen$Position <- as.numeric(plottablen$Position)
   plottablen <- plottablen[order(plottablen[,2],plottablen[,1]),]
   normal$Rank <- c(2,0)
   plottablen$Rank <- 1
-  
+
   normal2 <- rbind(plottablen, normal)
   normal2 <- normal2[order(normal2[,1],normal2[,2], normal2[,4]),]
-  
+
+
   # TUMOR
 
-  code2 <- substr(code, 1,16)
-  k <- grep(code2, colnames(datt))
-  listt <- paste("tumor",k)
-  col.numb <- which(colnames(counts_norm) %in% listt)
-  
-  if(length(k) == 1) {
-    exprt <- as.data.frame(counts_norm[,col.numb], row.names(counts_norm))
-  } else{
-    exprt <- counts_norm[,col.numb]
-  }
-  
-  # eerst overal +1 doen en dan de log nemen
-  exprt <- exprt + 1
-  exprt[,1:ncol(exprt)] <- log(exprt[1:ncol(exprt)], 2)
-  
-  if(ncol(exprt) > 1){
-    exprt$Mean <- rowMeans(exprt[,1:ncol(exprt)],na.rm = TRUE)
-    exprt$Mean <- round(exprt$Mean, digits = 6)
-    `%ni%` <- Negate(`%in%`)
-    exprt <- subset(exprt,select = names(exprt) %ni% listt)
-  }
-  
-  library("data.table")
-  exprt <- setDT(exprt, keep.rownames = TRUE)[]
-  
-  colnames(exprt) <- c('GeneId', 'Expression')
-  
-  # searching for GeneId and merging the expression to data
-  genes <- exprt[exprt$GeneId %in% results$GeneId,]
-  genest <- merge(results, genes, all = TRUE, sort = FALSE)
-  #genest <- genest[order(genest[,2]),]
-  genest <- na.omit(genest)
-  
-  genest <- genest[c("Chromosome", "Start", "Stop","GeneId", "Expression")]
-  
-  start2 = genest[,c('Chromosome', 'Start',  'GeneId','Expression')]
-  stop2 = genest[,c('Chromosome', 'Stop', 'GeneId', 'Expression')]
-  plottable2<-transform(genest, Region=paste(Start, Stop, sep="-"))
-  plottable2<- plottable2[,c('Chromosome', 'Region', 'GeneId','Expression')]
-  plottable2$Region <- as.character(plottable2$Region)
-  
   #tabel maken met gemiddelde expressiewaarden per regio
   plottablet <- data.frame(Chromosome=numeric(), Region=numeric(), GeneId=character(), Expression=numeric(), stringsAsFactors=FALSE)
   row1 <- c(Chromosome=plottable2$Chromosome[1], Region=plottable2$Region[1], GeneId=plottable2$GeneId[1] ,Expression=c(NA))
@@ -467,28 +472,28 @@ DataAnalysis <- function(chr_total, genome_size, allgenes, datn, datt, counts_no
   }
   # na de laatste loop ook de mean van expressionlist toevoegen aan de dataframe
   plottablet$Expression[is.na(plottablet$Expression)] = mean(Expressionlist)
-  
+
   plottablet$Chromosome <- as.numeric(plottablet$Chromosome)
   plottablet$Region <- as.character(plottablet$Region)
   plottablet$GeneId <- as.character(plottablet$GeneI)
   plottablet$Expression <- as.numeric(plottablet$Expression)
-  
+
   plottablet <- separate(data = plottablet, col = Region, into = c("Start", "Stop"), sep = "\\-")
-  
+
   start = plottablet[,c('Chromosome', 'Start', 'Expression')]
   colnames(start) <- c('Chromosome', 'Position', 'Expression')
   stop = plottablet[,c('Chromosome', 'Stop', 'Expression')]
   colnames(stop) <- c('Chromosome', 'Position', 'Expression')
-  
+
   plottablet<-as.data.frame(rbind(start, stop)) # plakt stop kolom onder start
   plottablet$Position <- as.numeric(plottablet$Position)
   plottablet <- plottablet[order(plottablet[,2],plottablet[,1]),]
-  
+
   # alle chormosomen in tabel zetten en ontbrekende stukken van bestaande chromosomen
   tumor <- data.frame(Chromosome=numeric(), Position=numeric(), Expression=numeric(),stringsAsFactors=FALSE)
   for(x in unique(plottablet$Chromosome)){
     df <- (plottablet[plottablet$Chromosome==x, ])
-    
+
     for(xx in 2:nrow(df)){
       #xx = 2
       if(nrow(df) == 2){
@@ -533,14 +538,14 @@ DataAnalysis <- function(chr_total, genome_size, allgenes, datn, datt, counts_no
             newestrow= c(x,chr_total[x+1],0)
             tumor[nrow(tumor)+1, ] <- newererrow
             tumor[nrow(tumor)+1, ] <- newestrow
-          } 
+          }
         }
         #xx = xx+1
       }
       #x = x+1
     }
   }
-  
+
   for(x in 1:22){
     #x = 1
     if(!(x %in% plottablet$Chromosome)){
@@ -553,7 +558,7 @@ DataAnalysis <- function(chr_total, genome_size, allgenes, datn, datt, counts_no
   plottablet <- plottablet[order(plottablet[,2],plottablet[,1]),]
   tumor$Rank <- c(2,0)
   plottablet$Rank <- 1
-  
+
   tumor2 <- rbind(plottablet, tumor)
   tumor2 <- tumor2[order(tumor2[,1],tumor2[,2], tumor2[,4]),]
   
@@ -574,38 +579,58 @@ chr_size = Datapreperation$chr_size
 centromere_pos = Datapreperation$centromere_pos
 
 plottable <- data.frame(Chromosome=normal2$Chromosome, Position=normal2$Position, ExpressionN=normal2$Expression, ExpressionT=tumor2$Expression,ExpressionRatio=tumor2$Expression-normal2$Expression)
+plottable$Position = as.character(plottable$Position)
+
+# als de expressie van een gen zowel in normaal als in tumor 0 is dan verwijderen
+#plottable<-plottable[!(plottable$ExpressionN==0 & plottable$ExpressionT==0),]
+
+# Expressieplot: dinamische y-limiet
+ymin = abs(min(plottable$ExpressionRatio))
+ymin = ceiling(ymin)
+ymin = -ymin
+ymax = 1
+ymax2 = max(plottable$ExpressionRatio)
+ymax2 = ceiling(ymax2)
+if(ymax2 > ymax){ymax = ymax2}else{ymax=ymax}
 
 # plottable <- plottable[plottable$Chromosome != 23, ] 
 # plottable <- plottable[plottable$Chromosome != 24, ]
 
 setwd(output_dir)
 
-png(filename=paste("Comparisonplot-",substr(code, 1,28), ".png", sep=""), width = 1980, height = 1080, units = "px")
+#png(filename=paste("Comparisonplot3-",substr(code, 1,28), ".png", sep=""), width = 1980, height = 1080, units = "px")
 
+par(mar=c(4, 7, 4, 2))
 par(mfrow=c(3,1))
-plot(rollmedian(orderedTable$position,201),rollmedian(orderedTable$MajorMinor,201),col="dimgrey",pch=15,cex=0.4,ylim=c(1,Ylim), ylab="Allelic Ratio",typ="l",xlab="",xaxt = "n",xlim=c(1,genome_size))
+par(las=1)
+plot(rollmedian(orderedTable$position,201),rollmedian(orderedTable$MajorMinor,201),col="554",pch=15,cex=0.4,ylim=c(1,Ylim), ylab="Allelic Ratio\n",typ="l",xlab="",xaxt = "n",xlim=c(1,genome_size), cex.axis=1.5,cex.lab=1.5, lwd=2.5)
+abline(1.75,0,col="black")
 # Draw chromosome guide lines + chromosoom cijfers
 for(i in 1 :22){
   if (i>1){abline(v=chr_total[i],col="gray48")}
   abline(v=chr_total[i]+centromere_pos[i],col="gray55",lty=4)
   #mtext(chr_total[i]+centromere_pos[i], side=1,at=chr_total[i]+centromere_pos[i], cex=0.5)
-  mtext(as.character(i),side=3, at=chr_total[i]+chr_size[i]/2,cex=0.8)
+  mtext(as.character(i),side=3, at=chr_total[i]+chr_size[i]/2,cex=1)
 }
-plot(cnv_lg$Position,cnv_lg$Segment_Mean,col="dimgrey",pch=15,cex=0.4,type="l",xlim=c(1,genome_size),ylim=c(-1.5,1.5), ylab="Segment Mean",xlab="",xaxt = "n")
+par(las=1)
+plot(cnv_lg$Position,cnv_lg$Segment_Mean,col="28",pch=15,cex=0.4,type="l",xlim=c(1,genome_size),ylim=c(-1.5,1.5), ylab="Segment Mean\n",xlab="",xaxt = "n", cex.axis=1.5,cex.lab=1.5, lwd=2.5)
+abline(0,0,col="black")
 # Draw chromosome guide lines + chr cijfers
 for(i in 1 :22){
   if (i>1){abline(v=chr_total[i],col="gray48")}
   abline(v=chr_total[i]+centromere_pos[i],col="gray55",lty=4)
-  mtext(as.character(i),side=3, at=chr_total[i]+chr_size[i]/2,cex=0.8)
+  mtext(as.character(i),side=3, at=chr_total[i]+chr_size[i]/2,cex=1)
 }
-plot(plottable$Position, plottable$ExpressionRatio,pch=15,cex=0.4, type = "l",col="dimgrey", main = "Ratio", xlab="Chromosomal position", ylab="Expression", xaxt = "n",xlim=c(1,genome_size), ylim=c(-1,3)) #
+par(las=1)
+plot(plottable$Position, plottable$ExpressionRatio,pch=15,cex=0.4, type = "l",col="554", xlab="Chromosomal position", ylab="Expression\n", xaxt = "n",xlim=c(1,genome_size), ylim=c(ymin,ymax), cex.axis=1.5,cex.lab=1.5, lwd=2.5)
+abline(0,0,col="black")
 # Draw chromosome guide lines + Chromosome cijfers
 for(y in 1 :22){
   if (y>1){abline(v=chr_total[y],col="gray48")}
   abline(v=chr_total[y]+centromere_pos[y],col="gray55",lty=4)
   #mtext(chr_total[y]+centromere_pos[y], side=1,at=chr_total[y]+centromere_pos[y], cex=0.5)
-  mtext(as.character(y),side=3, at=chr_total[y]+chr_size[y]/2,cex=0.8)
+  mtext(as.character(y),side=3, at=chr_total[y]+chr_size[y]/2,cex=1)
 }
 
-dev.off()
+#dev.off()
 
