@@ -15,9 +15,9 @@ source("eSNPKaryotyping/R/Edit_dbSNP_Files.R")
 source("eSNPKaryotyping/R/Sort_major_minor.R")
 
 # wrapperscript
-output_dir <- "/Users/Birgen/Documents/Howest/Stage/CMGG/RNA-seq_CNV/KIRC/TCGA-A3-3306-01A-01R-0864-07_eSNPout/"
+output_dir <- "/Users/Birgen/Documents/Howest/Stage/CMGG/RNA-seq_CNV/BRCA/TCGA-A7-A0DC-01B-04R-A22O-07_eSNPout/"
 input_dir <- "/Users/Birgen/Documents/Howest/Stage/CMGG/RNA-seq_CNV/"
-cancer_type <- "KIRC"
+cancer_type <- "BRCA"
 Organism = "Human"
 cnv_dir <- "/Users/Birgen/Documents/Howest/Stage/CMGG/RNA-seq_CNV/TCGA_CNVdata"
 Ylim = 3
@@ -123,7 +123,7 @@ PlotGenome<-function(Output_Directory,orderedTable,Window,Ylim,Organism,CancerTy
   cnv_lg$Score[cnv_lg$Segment_Mean< (-0.2)] = -1
   cnv_lg <- cnv_lg[cnv_lg$Num_Probes>100,]
   
-  orderedTable3 <- orderedTable[orderedTable$chr != 23, ] 
+  orderedTable3 <- orderedTable[orderedTable$chr != 23, ]
   orderedTable <- orderedTable3[orderedTable3$chr != 24, ]
   cnv_lg2 <- cnv_lg[cnv_lg$Chromosome != 23, ] 
   cnv_lg <- cnv_lg2[cnv_lg2$Chromosome != 24, ]
@@ -171,12 +171,13 @@ PlotGenome<-function(Output_Directory,orderedTable,Window,Ylim,Organism,CancerTy
   }
   
   setwd(output_dir)
-  orderedTableMedian2[is.na(orderedTableMedian2)] = 0
+  orderedTableMedian2$Stop[is.na(orderedTableMedian2$Stop)] = orderedTableMedian$Position[i-1]
+  orderedTableMedian2$Rollmedian[is.na(orderedTableMedian2$Rollmedian)] = mean(rollmedianlist)
   orderedTableMedian2 <- orderedTableMedian2[(orderedTableMedian2$Stop - orderedTableMedian2$Start) > 1000, ]
   orderedTableMedian2 <- orderedTableMedian2[orderedTableMedian2$Chromosome != 23, ]
   orderedTableMedian2 <- orderedTableMedian2[orderedTableMedian2$Chromosome != 24, ]
   write.table(orderedTableMedian2[,1:3], file = 'Regions_new.csv', sep = "\t", row.names=FALSE, quote = FALSE)
-  return(list(cnv_lg = cnv_lg, orderedTable = orderedTable, orderedTableMedian2 = orderedTableMedian2[,1:3]))
+  return(list(cnv_lg = cnv_lg, orderedTable = orderedTable, orderedTableMedian2 = orderedTableMedian2[,1:3], chr_total2 = chr_total2))
 }
 
 
@@ -185,7 +186,7 @@ Plotgenomecnv <- PlotGenome(Output_Directory = output_dir,orderedTable = table2,
 cnv_lg = Plotgenomecnv$cnv_lg
 orderedTable = Plotgenomecnv$orderedTable
 Regions = Plotgenomecnv$orderedTableMedian2
-
+chr_total2 = Plotgenomecnv$chr_total2
 
 # Expression
 DataPrep <- function(Organism, CancerType){
@@ -436,7 +437,7 @@ for(i in 1:nrow(data)){
   newrow = c(data$Chromosome[i], data$Stop[i], data$Start[i+1])
   data2 <- rbind(data2,newrow)
 }
-data2$Stop[is.na(data2$Stop)] = chr_total[19]
+data2$Stop[is.na(data2$Stop)] = chr_total2[data$Chromosome[i]]
 data2$Expression = 0
 
 # # ROLLMEDIAN
@@ -496,8 +497,10 @@ ymax2 = max(rollmean(plottable$ExpressionRatio,window))
 ymax2 = ceiling(ymax2)
 if(ymax2 > ymax){ymax = ymax2}else{ymax=ymax}
 
+# PLOT SEPERATE
+
 # plot all regions with no expression
-png(filename=paste("testplot_new-",substr(code, 1,28), ".png", sep=""), width = 1980, height = 1080, units = "px")
+#png(filename=paste("testplot_new-",substr(code, 1,28), ".png", sep=""), width = 1980, height = 1080, units = "px")
 par(mar=c(7, 7, 4, 2))
 par(las=1)
 plot(1, type="n", xlim=c(0, genome_size), ylim=c(ymin,ymax),  xlab="Chromosomal position", ylab="Expression\n", xaxt = "n", cex.axis=1.5,cex.lab=1.5)
@@ -531,33 +534,135 @@ for(i in 1 :22){
   mtext(as.character(i),side=3, at=chr_total[i]+chr_size[i]/2,cex=1)
 }
 
+#dev.off()
 
-dev.off()
+# PLOT 1 LINE WITH MEAN
 
-setwd(output_dir)
+oneline <- data.frame(X=numeric(),Y=numeric())
+for(i in 1:nrow(data2)){
+  arow <- c(X=data2$Start[i],Y=data2$Expression[i])
+  somerow <- c(X=data2$Stop[i],Y=data2$Expression[i])
+  oneline[nrow(oneline)+1, ] <- arow
+  oneline[nrow(oneline)+1, ] <- somerow
+}
 
-#png(filename=paste("Comparisonplot_new-",substr(code, 1,28), ".png", sep=""), width = 1980, height = 1080, units = "px")
 
-par(mar=c(7, 7, 4, 2))
+# add rollmedian of regions with expression
+for(x in data$Start){
+  rollmediandata <- (normal2[normal2$Start==x, ])
+  rollmediandata2 <- allgenes[(allgenes$GeneId %in% rollmediandata$GeneId),]
+  rollmediandata2 <- merge(rollmediandata, rollmediandata2, by = "GeneId", sort = FALSE)
+  rollmediandata2 <- merge(rollmediandata2, plottable, by = "GeneId", sort = FALSE)
+  rollmediandata <- data.frame(Chromosome = rollmediandata2$Chromosome.x, Start = rollmediandata2$Start.y, GeneId = rollmediandata2$GeneId, ExpressionRatio = rollmediandata2$ExpressionRatio)
+  rollmediandata$Start <- as.numeric(rollmediandata$Start)
+  if(nrow(rollmediandata) < window){
+    onerow <- c(X=median(rollmediandata$Start),Y=mean(rollmediandata$ExpressionRatio) )
+    oneline[nrow(oneline)+1, ] <- onerow
+  }else{
+    dtframe <- data.frame(X=rollmedian(rollmediandata$Start,window),Y=rollmean(rollmediandata$ExpressionRatio,window))
+    oneline <- as.data.frame(rbind(oneline, dtframe))
+  }
+}
+
+oneline <- oneline[order(oneline[,1]),]
+
+# PLOT 1 LINE WITH NO MEAN IN SMALL REGIONS
+oneline <- data.frame(X=numeric(),Y=numeric())
+for(i in 1:nrow(data2)){
+  arow <- c(X=data2$Start[i],Y=data2$Expression[i])
+  somerow <- c(X=data2$Stop[i],Y=data2$Expression[i])
+  oneline[nrow(oneline)+1, ] <- arow
+  oneline[nrow(oneline)+1, ] <- somerow
+}
+
+
+# add rollmedian of regions with expression
+for(x in data$Start){
+  rollmediandata <- (normal2[normal2$Start==x, ])
+  rollmediandata2 <- allgenes[(allgenes$GeneId %in% rollmediandata$GeneId),]
+  rollmediandata2 <- merge(rollmediandata, rollmediandata2, by = "GeneId", sort = FALSE)
+  rollmediandata2 <- merge(rollmediandata2, plottable, by = "GeneId", sort = FALSE)
+  rollmediandata <- data.frame(Chromosome = rollmediandata2$Chromosome.x, Start = rollmediandata2$Start.y, GeneId = rollmediandata2$GeneId, ExpressionRatio = rollmediandata2$ExpressionRatio)
+  rollmediandata$Start <- as.numeric(rollmediandata$Start)
+  if(nrow(rollmediandata) >= window){
+    dtframe <- data.frame(X=rollmedian(rollmediandata$Start,window),Y=rollmean(rollmediandata$ExpressionRatio,window))
+    oneline <- as.data.frame(rbind(oneline, dtframe))
+  }
+}
+
+oneline <- oneline[order(oneline[,1]),]
+
+# PLOT 1 LINE WITH ALL POINT IN SMALL REGION
+oneline <- data.frame(X=numeric(),Y=numeric())
+for(i in 1:nrow(data2)){
+  arow <- c(X=data2$Start[i],Y=data2$Expression[i])
+  somerow <- c(X=data2$Stop[i],Y=data2$Expression[i])
+  oneline[nrow(oneline)+1, ] <- arow
+  oneline[nrow(oneline)+1, ] <- somerow
+}
+
+
+# add rollmedian of regions with expression
+for(x in data$Start){
+  rollmediandata <- (normal2[normal2$Start==x, ])
+  rollmediandata2 <- allgenes[(allgenes$GeneId %in% rollmediandata$GeneId),]
+  rollmediandata2 <- merge(rollmediandata, rollmediandata2, by = "GeneId", sort = FALSE)
+  rollmediandata2 <- merge(rollmediandata2, plottable, by = "GeneId", sort = FALSE)
+  rollmediandata <- data.frame(Chromosome = rollmediandata2$Chromosome.x, Start = rollmediandata2$Start.y, GeneId = rollmediandata2$GeneId, ExpressionRatio = rollmediandata2$ExpressionRatio)
+  rollmediandata$Start <- as.numeric(rollmediandata$Start)
+  if(nrow(rollmediandata) < window){
+    datframe <- data.frame(X=rollmediandata$Start, Y=rollmediandata$ExpressionRatio)
+    oneline <- as.data.frame(rbind(oneline, datframe))
+  }else{
+    dtframe <- data.frame(X=rollmedian(rollmediandata$Start,window),Y=rollmean(rollmediandata$ExpressionRatio,window))
+    oneline <- as.data.frame(rbind(oneline, dtframe))
+  }
+}
+
+oneline <- oneline[order(oneline[,1]),]
+
+#png(filename=paste("testplot3-",substr(code, 1,28), ".png", sep=""), width = 1980, height = 1080, units = "px")
+
+par(mar=c(4, 7, 4, 2))
 par(mfrow=c(3,1))
 par(las=1)
-plot(rollmedian(orderedTable$position,201),rollmedian(orderedTable$MajorMinor,201),col="554",pch=15,cex=0.4,ylim=c(1,Ylim), ylab="Allelic Ratio\n",typ="l",xlab="",xaxt = "n",xlim=c(1,genome_size), cex.axis=1.5,cex.lab=1.5, lwd=2.5)
-abline(1.75,0,col="black")
-# Draw chromosome guide lines + chromosoom cijfers
+plot(1, type="n", xlim=c(0, genome_size), ylim=c(ymin,ymax),  xlab="Chromosomal position", ylab="Expression\n", xaxt = "n", cex.axis=1.5,cex.lab=1.5)
+par(new=TRUE)
+plot(oneline$X, oneline$Y, type="l", xlim=c(0, genome_size), ylim=c(ymin,ymax), ylab="", xaxt = "n", yaxt = "n",col="554", xlab="",cex.axis=1.5,cex.lab=1.5, lwd=2.5)
+
 for(i in 1 :22){
   if (i>1){abline(v=chr_total[i],col="gray48")}
   abline(v=chr_total[i]+centromere_pos[i],col="gray55",lty=4)
   #mtext(chr_total[i]+centromere_pos[i], side=1,at=chr_total[i]+centromere_pos[i], cex=0.5)
   mtext(as.character(i),side=3, at=chr_total[i]+chr_size[i]/2,cex=1)
 }
+
+#dev.off()
+
+setwd(output_dir)
+
+png(filename=paste("Comparisonplot_new2-",substr(code, 1,28), ".png", sep=""), width = 1980, height = 1080, units = "px")
+
+par(mar=c(5, 9, 4, 2))
+par(mfrow=c(3,1))
 par(las=1)
-plot(cnv_lg$Position,cnv_lg$Segment_Mean,col="28",pch=15,cex=0.4,type="l",xlim=c(1,genome_size),ylim=c(-1.5,1.5), ylab="Segment Mean\n",xlab="",xaxt = "n", cex.axis=1.5,cex.lab=1.5, lwd=2.5)
+plot(rollmedian(orderedTable$position,201),rollmedian(orderedTable$MajorMinor,201),col="554",pch=15,cex=0.4,ylim=c(1,Ylim), ylab="Allelic Ratio\n",typ="l",xlab="",xaxt = "n",xlim=c(1,genome_size), cex.axis=2,cex.lab=3,font.axis=2, lwd=2.5)
+abline(1.75,0,col="black")
+# Draw chromosome guide lines + chromosoom cijfers
+for(i in 1 :22){
+  if (i>1){abline(v=chr_total[i],col="gray48")}
+  abline(v=chr_total[i]+centromere_pos[i],col="gray55",lty=4)
+  #mtext(chr_total[i]+centromere_pos[i], side=1,at=chr_total[i]+centromere_pos[i], cex=0.5)
+  mtext(as.character(i),side=3, at=chr_total[i]+chr_size[i]/2,cex=1.5)
+}
+par(las=1)
+plot(cnv_lg$Position,cnv_lg$Segment_Mean,col="28",pch=15,cex=0.4,type="l",xlim=c(1,genome_size),ylim=c(-1.5,1.5), ylab="Segment Mean\n",xlab="",xaxt = "n", cex.axis=2,cex.lab=3, font.axis=2,lwd=2.5)
 abline(0,0,col="black")
 # Draw chromosome guide lines + chr cijfers
 for(i in 1 :22){
   if (i>1){abline(v=chr_total[i],col="gray48")}
   abline(v=chr_total[i]+centromere_pos[i],col="gray55",lty=4)
-  mtext(as.character(i),side=3, at=chr_total[i]+chr_size[i]/2,cex=1)
+  mtext(as.character(i),side=3, at=chr_total[i]+chr_size[i]/2,cex=1.5)
 }
 # par(las=1)
 # plot(plottable$Position, plottable$ExpressionRatio,pch=15,cex=0.4, type = "p",col="554", xlab="Chromosomal position", ylab="Expression\n", xaxt = "n",xlim=c(1,genome_size), ylim=c(ymin,ymax), cex.axis=1.5,cex.lab=1.5, lwd=2.5)
@@ -571,36 +676,16 @@ for(i in 1 :22){
 # }
 
 par(las=1)
-plot(1, type="n", xlim=c(0, genome_size), ylim=c(ymin,ymax),  xlab="Chromosomal position", ylab="Expression\n", xaxt = "n", cex.axis=1.5,cex.lab=1.5)
-for(i in 1:nrow(data2)){
-  par(new=TRUE)
-  plot(c(data2$Start[i],data2$Stop[i]),c(data2$Expression[i],data2$Expression[i]), type="l",xlim=c(0, genome_size), ylim=c(ymin,ymax), xlab="", ylab="", xaxt = "n", yaxt = "n") #ylim=c(ymin,ymax),cex.axis=1.5,cex.lab=1.5,
-}
+plot(1, type="n", xlim=c(0, genome_size), ylim=c(ymin,ymax),  xlab="Chromosomal position", ylab="Expression\n", xaxt = "n", cex.axis=2,cex.lab=3,font.axis=2)
+par(new=TRUE)
+plot(oneline$X, oneline$Y, type="l", xlim=c(0, genome_size), ylim=c(ymin,ymax), ylab="", xaxt = "n",col="554", xlab="",cex.axis=2,cex.lab=3, font.axis=2,lwd=2.5)
 
-
-# add rollmedian of regions with expression
-for(x in data$Start){
-  rollmediandata <- (genesn[genesn$Start==x, ])
-  rollmediandata2 <- allgenes[(allgenes$GeneId %in% rollmediandata$GeneId),]
-  rollmediandata2 <- merge(rollmediandata, rollmediandata2, by = "GeneId", sort = FALSE)
-  rollmediandata2 <- merge(rollmediandata2, plottable, by = "GeneId", sort = FALSE)
-  rollmediandata <- data.frame(Chromosome = rollmediandata2$Chromosome.x, Start = rollmediandata2$Start.y, GeneId = rollmediandata2$GeneId, ExpressionRatio = rollmediandata2$ExpressionRatio)
-  
-  rollmediandata$Start <- as.numeric(rollmediandata$Start)
-  if(nrow(rollmediandata) < window){
-    par(new=TRUE)
-    plot(median(rollmediandata$Start), mean(rollmediandata$ExpressionRatio), type="l", xlim=c(0, genome_size), ylim=c(ymin,ymax), ylab="", xaxt = "n", yaxt = "n",col="554", xlab="",cex.axis=1.5,cex.lab=1.5, lwd=2.5)
-  }else{
-    par(new=TRUE)
-    plot(rollmedian(rollmediandata$Start,window), rollmean(rollmediandata$ExpressionRatio,window), type="l", xlim=c(0, genome_size), ylim=c(ymin,ymax), ylab="", xaxt = "n", yaxt = "n",col="554", xlab="",cex.axis=1.5,cex.lab=1.5, lwd=2.5)
-  }
-}
 for(i in 1 :22){
   if (i>1){abline(v=chr_total[i],col="gray48")}
   abline(v=chr_total[i]+centromere_pos[i],col="gray55",lty=4)
   #mtext(chr_total[i]+centromere_pos[i], side=1,at=chr_total[i]+centromere_pos[i], cex=0.5)
-  mtext(as.character(i),side=3, at=chr_total[i]+chr_size[i]/2,cex=1)
+  mtext(as.character(i),side=3, at=chr_total[i]+chr_size[i]/2,cex=1.5)
 }
 
-#dev.off()
+dev.off()
 
