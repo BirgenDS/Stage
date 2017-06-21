@@ -1,3 +1,5 @@
+# Script voor het maken van plots met enkel tumor data
+
 library("zoo")
 library("gplots")
 library("tidyr")
@@ -77,7 +79,7 @@ PlotGenome<-function(Output_Directory,orderedTable,Window,Ylim,Organism,CancerTy
     chr_total=c(chr_total,sum(chr_size[1:i]))  
   }
   
-  # chromosome 23 and 24 not in plot
+  # chromosome 23 and 24 niet in plot
   genome_size=sum(chr_size[1:22])
   
   orderedTable$position=orderedTable$position+chr_total[orderedTable$chr]
@@ -123,19 +125,14 @@ PlotGenome<-function(Output_Directory,orderedTable,Window,Ylim,Organism,CancerTy
   cnv_lg$Score[cnv_lg$Segment_Mean< (-0.2)] = -1
   cnv_lg <- cnv_lg[cnv_lg$Num_Probes>100,]
   
+  # Verwijderd rijen van chr 23 en 24 uit de tabellen omdat deze niet hoeven geplot te worden
   orderedTable3 <- orderedTable[orderedTable$chr != 23, ]
   orderedTable <- orderedTable3[orderedTable3$chr != 24, ]
   cnv_lg2 <- cnv_lg[cnv_lg$Chromosome != 23, ] 
   cnv_lg <- cnv_lg2[cnv_lg2$Chromosome != 24, ]
   
-  # Table with values from first plot
-  orderedTableMedian <- rollmedian(orderedTable$MajorMinor,window, fill = NA)
-  orderedTablePostition <- rollmedian(orderedTable$position,window, fill = NA)
-  orderedTableRoll = data.frame(orderedTable$chr,orderedTablePostition, orderedTableMedian)
-  colnames(orderedTableRoll) <- c('Chromosome','Position', 'Rollmedian')
-  orderedTableRoll <- na.omit(orderedTableRoll)
-  
-  # table with rolling median > 1.75, in stead of MajorMinor
+  # rollmedian over orderedtable$MajorMinor zoals in plot onderaan dit script
+  # orderedTableMedian is een tabel met de rijen waar deze rollmedian > 1.75
   orderedTableMedian <- rollmedian(orderedTable$MajorMinor,window, fill = NA)
   orderedTable2 = data.frame(orderedTable$chr,orderedTable$position, orderedTableMedian)
   colnames(orderedTable2) <- c('Chromosome','Position', 'Rollmedian')
@@ -145,9 +142,10 @@ PlotGenome<-function(Output_Directory,orderedTable,Window,Ylim,Organism,CancerTy
   orderedTableMedian <- na.omit(orderedTable2)
   #write.csv(orderedTableMedian, file = 'ordereTableMedian.csv', row.names=FALSE)
   
+  # chr_total lijst die begint bij de grote van chr 1
   chr_total2 <- chr_total[-1];
   
-  # loop to select different imballances
+  # loop om de allelic imballance > 1,75 te selecteren per chromosoom
   orderedTableMedian2 <- data.frame(Chromosome=orderedTableMedian$Chromosome[1], Start=orderedTableMedian$Position[1], Stop=c(NA), Rollmedian=c(NA))
   rollmedianlist <- c(orderedTableMedian$Rollmedian[1])
   #i = 2
@@ -171,11 +169,12 @@ PlotGenome<-function(Output_Directory,orderedTable,Window,Ylim,Organism,CancerTy
   }
   
   setwd(output_dir)
+  # op de laatste rij de NA waarden invullen
   orderedTableMedian2$Stop[is.na(orderedTableMedian2$Stop)] = orderedTableMedian$Position[i-1]
   orderedTableMedian2$Rollmedian[is.na(orderedTableMedian2$Rollmedian)] = mean(rollmedianlist)
+  # Enkel rijen overhouden waar het verschil tussen start en stop > 1000
   orderedTableMedian2 <- orderedTableMedian2[(orderedTableMedian2$Stop - orderedTableMedian2$Start) > 1000, ]
-  orderedTableMedian2 <- orderedTableMedian2[orderedTableMedian2$Chromosome != 23, ]
-  orderedTableMedian2 <- orderedTableMedian2[orderedTableMedian2$Chromosome != 24, ]
+  # Wegschrijven van deze tabel naar een csv bestand in de output_dir
   write.table(orderedTableMedian2[,1:3], file = 'Regions_new.csv', sep = "\t", row.names=FALSE, quote = FALSE)
   return(list(cnv_lg = cnv_lg, orderedTable = orderedTable, orderedTableMedian2 = orderedTableMedian2[,1:3], chr_total2 = chr_total2))
 }
@@ -191,8 +190,10 @@ chr_total2 = Plotgenomecnv$chr_total2
 # Expression
 DataPrep <- function(Organism, CancerType){
   
+  # gaat naar de map van het kankertype
   setwd(paste(input_dir,cancer_type, sep = ""))
   
+  # inladen data
   datt <- read.delim(paste(cancer_type,"_t_geneENS_counts.txt", sep = ""), row.names = 1)
   
   # data normaliseren
@@ -213,6 +214,7 @@ DataPrep <- function(Organism, CancerType){
   
   counts_norm<-as.data.frame(cpm(dge, normalized.lib.sizes = TRUE))
   
+  
   if(Organism == "Human"){
     centromere_pos=c(125,93.3,91,50.4,48.4,61,59.9,45.6,49,40.2,53.7,35.8,17.9,17.6,19,36.6,24,17.2,26.5,27.5,13.2,14.7,60.6,12.5)
     centromere_pos=centromere_pos*1000000
@@ -224,21 +226,19 @@ DataPrep <- function(Organism, CancerType){
     chr_total=c(chr_total,sum(chr_size[1:i]))  
   }
   
-  # chromosome 23 and 24 not in plot
+  # chromosome 23 and 24 niet in plot
   genome_size=sum(chr_size[1:22])
   
-  # lijst van alle genen
+  # lijst van alle genen inladen die gehaald is van ensembl
   setwd(input_dir)
   allgenes <- read.table("allgenes.txt",header=TRUE,sep="\t")
   allgenes <- allgenes[order(allgenes[,1],allgenes[,2]),]
   colnames(allgenes) <- c('Chromosome', 'Start', 'Stop', 'GeneId')
   
-  # vergelijk genen in allgenes met datt
-  library(compare)
-  dattgenes <- setDT(datt, keep.rownames = TRUE)[]
+  # vergelijken van deze genen in allgenes met de genen in datt om te controleren of degene die daar meer in zitten weldegelijk de genen op chr 23 en 24 zijn
   comparison <- table(dattgenes[ which( dattgenes$rn %ni% allgenes$GeneId) , "rn"])
   
-  # allgenes begint van 0, in deze file telt de positie op, dus chromosoom grote bij optellen
+  # allgenes begint per chromosome opnieuw van 0, dus chromosoom grote bij optellen
   for(x in 1:22){
     start = allgenes$Start[allgenes$Chromosome == x]
     start = as.numeric(start)
@@ -251,9 +251,10 @@ DataPrep <- function(Organism, CancerType){
   return(list(datt=datt, counts_norm=counts_norm, chr_total=chr_total, genome_size=genome_size, allgenes=allgenes, centromere_pos=centromere_pos, chr_size=chr_size))
 }
 
-# plaats van de code in de data frame zoeken
 setwd(output_dir)
+# code is het laatste deel van de output_dir
 code <- basename(output_dir)
+# streepjes in code vervangen door punten omdat in de titels van datt de code met punten gescheiden zijn
 code <- gsub("-", ".", code)
 
 Datapreperation <- DataPrep(Organism = "Human",CancerType = cancer_type)
@@ -266,13 +267,15 @@ DataAnalysis <- function(Regions, chr_total, genome_size, allgenes, datt, counts
   
   data <- Regions
   
+  # dataframe (results) maken met alle genen die in de regio's van allelic imballences liggen
+  # start en stop is bij alle genen die in deze regio liggen de start en de stop van de regio
   results <- data.frame(Chromosome=numeric(), Start=numeric(), Stop=numeric(), GeneId=character(), stringsAsFactors=FALSE)
   #for(chr in unique(data$Chromosome)){
   for(chr in 1:nrow(data)){
     #chr = 12
     chrom = data$Chromosome[chr]
     
-    # zoek alle genen in allgenes die in de regio van data liggen per chr
+    # dataframe met alle genen uit allgenes die in de regio van data liggen per chr
     dt <- (allgenes[allgenes$Chromosome==chrom, ])
     dt$GeneId <- as.character((dt$GeneId))
     
@@ -288,21 +291,28 @@ DataAnalysis <- function(Regions, chr_total, genome_size, allgenes, datt, counts
   
   # TUMOR
   
+  # code waarmee we zoeken in datt om ons staal er uit te halen
   code2 <- substr(code, 1,16)
   k <- grep(code2, colnames(datt))
+  # de nummers van de kolommen met deze code in een lijst steken met het woord tumor ervoor om hier mee te zoeken in de genormaliseerde data, counts_norm
   listt <- paste("tumor",k)
   col.numb <- which(colnames(counts_norm) %in% listt)
   
+  # een aparte data frame maken met de kolommen uit counts_norm
+  # if voor als het maar 1 kolom is, else voor als het meerdere kolommen zijn
   if(length(k) == 1) {
     exprt <- as.data.frame(counts_norm[,col.numb], row.names(counts_norm))
   } else{
     exprt <- counts_norm[,col.numb]
   }
   
-  # eerst overal +1 doen en dan de log nemen
+  # alle getallen +1 doen en dan log2 ervan nemen nemen
   exprt <- exprt + 1
   exprt[,1:ncol(exprt)] <- log(exprt[1:ncol(exprt)], 2)
   
+  # als er meerdere kolommen matchen met de code en in exprt zijn gestoken, per rij het gemiddelde nemen
+  # getallen afronden op 6 cijfers
+  # dataframe maken met enkel de kolom met het gemiddelde per rij
   if(ncol(exprt) > 1){
     exprt$Mean <- rowMeans(exprt[,1:ncol(exprt)],na.rm = TRUE)
     exprt$Mean <- round(exprt$Mean, digits = 6)
@@ -310,38 +320,31 @@ DataAnalysis <- function(Regions, chr_total, genome_size, allgenes, datt, counts
     exprt <- subset(exprt,select = names(exprt) %ni% listt)
   }
   
+  # van de rijnamen een kolom maken
   library("data.table")
   exprt <- setDT(exprt, keep.rownames = TRUE)[]
   
   colnames(exprt) <- c('GeneId', 'Expression')
   
-  # searching for GeneId and merging the expression to data
+  # dataframe matchen met results op basis van gene-id om de expressiewaarden van die genen er bij te voegen
   genes <- exprt[exprt$GeneId %in% results$GeneId,]
   genest <- merge(results, genes, all = TRUE, sort = FALSE)
   #genest <- genest[order(genest[,2]),]
   genest <- na.omit(genest)
   
-  #genest <- genest[c("Chromosome", "Position","GeneId", "Expression")]
   genest <- genest[c("Chromosome", "Start", "Stop","GeneId", "Expression")]
   
-  # get allgenes of this tumor code
+  # dataframe maken met alle genen van dit staal, door de expressie aan de genen te matchen
   allgenest <- exprt[exprt$GeneId %in% allgenes$GeneId,]
+  # chromosoom, start en stop toevoegen
   allgenest <- merge(allgenes, allgenest, sort = FALSE)
-  allgenest <- na.omit(allgenest)
   allgenest <- allgenest[c("Chromosome", "Start", "Stop","GeneId", "Expression")]
   
-  # Table with rollmean over expression from allgenest
+  # dataframe met rollmean over de expressie
   allgenestroll <- rollmean(allgenest$Expression,window, fill = NA)
   allgenestroll = data.frame(allgenest$Chromosome,allgenest$GeneId, allgenestroll)
   colnames(allgenestroll) <- c('Chromosome','GeneId', 'Expression')
   allgenestroll <- na.omit(allgenestroll)
-  
-  # # regions of interest from table with rollmean
-  # rollgenes <- allgenestroll[allgenestroll$GeneId %in% results$GeneId,]
-  # rollgenes <- merge(results, rollgenes, all = TRUE, sort = FALSE)
-  # #genest <- genest[order(genest[,2]),]
-  # rollgenes <- na.omit(rollgenes)
-  # rollgenes <- rollgenes[c("Chromosome", "Start", "Stop","GeneId", "Expression")]
   
   return(list(data=data, tumor=genest, tumormean=rollgenes))
 }
@@ -357,18 +360,20 @@ chr_total = Datapreperation$chr_total
 chr_size = Datapreperation$chr_size
 centromere_pos = Datapreperation$centromere_pos
 
-# density plot
-d <- density(allgenestroll$Expression) # returns the density data 
-plot(d) # plots the results
+# density plot van expressie met rollmean
+d <- density(allgenestroll$Expression)
+plot(d)
 allgenesmean = mean(allgenestroll$Expression)
 
+# dataframe met tumor data, allgenesmean en het verschil van de 2 om te kijken of de rollmean in de regios links of rechts van het gemiddelde ligt
 plottable <- data.frame(Chromosome=tumor$Chromosome, Position=tumor$Start, GeneId=tumor$GeneId, ExpressionT=tumor$Expression,ExpressionM=allgenesmean, ExpressionMean=tumor$Expression-allgenesmean)
 plottable$Position = as.character(plottable$Position)
 
-# als de expressie van een gen zowel in normaal als in tumor 0 is dan verwijderen
+# als de expressie van een gen 0 is dan verwijderen
 plottable<-plottable[!(plottable$ExpressionT==0),]
 
-# dataframe voor nullijn tussen de data met expressie met rollmedian
+# dataframe voor nullijn tussen de regios met expressie
+# chromosoom 1 begint bij 1 tot de eerste start en op rij 2 van de eerste stop tot de tweede start en zo schuift alles 1 op
 data2 <- data.frame(Chromosome=numeric(), Start=numeric(), Stop=numeric())
 row1 <- c(Chromosome=data$Chromosome[1], Start=0, Stop=data$Start[1])
 data2[nrow(data2)+1, ] <- row1
@@ -377,6 +382,7 @@ for(i in 1:nrow(data)){
   data2 <- rbind(data2,newrow)
 }
 data2$Stop[is.na(data2$Stop)] = chr_total2[data$Chromosome[i]]
+# eindpunt van de nullijn invoegen als er geen regio is met expressie van chromosoom 22
 if(tail(data2$Chromosome, n=1) != 22){
   newrow = c(Chromosome=22, Start = tail(data2$Stop, n=1), Stop = chr_total2[22])
   data2 <- rbind(data2,newrow)
@@ -384,9 +390,10 @@ if(tail(data2$Chromosome, n=1) != 22){
 
 data2$Expression = 0
 
-# ROLLMEAN
+
 window = 251
 
+# variabele limiten van de y-as afhankelijk van het grootste en kleinste getal in de expressie kolom
 ymin = abs(min(rollmean(plottable$ExpressionMean,window)))
 ymin = ceiling(ymin)
 ymin = -ymin
@@ -396,7 +403,8 @@ ymax2 = ceiling(ymax2)
 if(ymax2 > ymax){ymax = ymax2}else{ymax=ymax}
 
 
-# PLOT 1 LINE WITH NO MEAN IN SMALL REGIONS
+# dataframe maken met de gegevens voor de plot
+# nullijn aan de hand van data2
 oneline <- data.frame(X=numeric(),Y=numeric())
 for(i in 1:nrow(data2)){
   arow <- c(X=data2$Start[i],Y=data2$Expression[i])
@@ -406,7 +414,7 @@ for(i in 1:nrow(data2)){
 }
 
 
-# add rollmedian of regions with expression
+# rollmedian over de regio's met expressie
 for(x in data$Start){
   rollmediandata <- (tumor[tumor$Start==x, ])
   rollmediandata2 <- allgenes[(allgenes$GeneId %in% rollmediandata$GeneId),]
@@ -423,9 +431,8 @@ for(x in data$Start){
 oneline <- oneline[order(oneline[,1]),]
 
 
-
+# apart plotten om te kijken of het klopt
 #png(filename=paste("MeanExpression2-",substr(code, 1,28), ".png", sep=""), width = 1980, height = 1080, units = "px")
-
 par(mar=c(4, 7, 4, 2))
 par(mfrow=c(1,1))
 par(las=1)
@@ -453,6 +460,7 @@ for(i in 1 :22){
 
 setwd(output_dir)
 
+# plot met drie lijnen onder elkaar, lijn 1 allelic ratio, lijn 2 copy number, lijn 3 expressie
 #png(filename=paste("Comparisonplot_new2-",substr(code, 1,28), ".png", sep=""), width = 1980, height = 1080, units = "px")
 
 par(mar=c(5, 9, 4, 2))
